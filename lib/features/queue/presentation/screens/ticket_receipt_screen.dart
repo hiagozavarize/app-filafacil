@@ -169,3 +169,4 @@ class _TicketInfoRow extends StatelessWidget {
     );
   }
 }
+

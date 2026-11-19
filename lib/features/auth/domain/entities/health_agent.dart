@@ -108,3 +108,4 @@ class HealthAgent extends Equatable {
     isActive,
   ];
 }
+

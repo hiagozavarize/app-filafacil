@@ -37,3 +37,4 @@ final class AppColors {
   /// Branco (`#FFFFFF`) — Fundo das telas internas e caixas de formulário.
   static const Color branco = Color(0xFFFFFFFF);
 }
+

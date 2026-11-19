@@ -178,3 +178,4 @@ class QueueTicket extends Equatable {
     doctorName,
   ];
 }
+

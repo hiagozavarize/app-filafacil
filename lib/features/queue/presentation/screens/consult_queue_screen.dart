@@ -420,3 +420,4 @@ class _PatientQueueCard extends StatelessWidget {
     );
   }
 }
+

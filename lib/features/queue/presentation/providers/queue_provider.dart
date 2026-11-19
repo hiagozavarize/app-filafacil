@@ -409,3 +409,4 @@ class QueueNotifier extends Notifier<QueueState> {
 final queueProvider = NotifierProvider<QueueNotifier, QueueState>(
   QueueNotifier.new,
 );
+

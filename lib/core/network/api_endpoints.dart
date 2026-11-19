@@ -27,3 +27,4 @@ final class ApiEndpoints {
   static const String statsOverview = '/stats/overview';
   static const String history = '/history';
 }
+

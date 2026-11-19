@@ -61,3 +61,4 @@ final class ServerException extends AppException {
     super.details,
   });
 }
+

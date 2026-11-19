@@ -33,3 +33,4 @@ final class EnvConfig {
   /// Versão exibida na Splash Screen.
   static const String appVersionLabel = 'SUS Digital • Versão 1.0';
 }
+

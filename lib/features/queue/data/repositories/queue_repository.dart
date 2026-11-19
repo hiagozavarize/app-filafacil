@@ -280,3 +280,4 @@ final queueRepositoryProvider = Provider<IQueueRepository>((ref) {
   }
   return RemoteQueueRepository(ref.watch(apiClientProvider));
 });
+
