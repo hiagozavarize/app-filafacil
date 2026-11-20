@@ -69,3 +69,4 @@ class Patient extends Equatable {
     conditions,
   ];
 }
+

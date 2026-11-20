@@ -131,3 +131,4 @@ class HistoryNotifier extends Notifier<HistoryState> {
 final historyProvider = NotifierProvider<HistoryNotifier, HistoryState>(
   HistoryNotifier.new,
 );
+

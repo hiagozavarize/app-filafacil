@@ -174,3 +174,4 @@ final historyRepositoryProvider = Provider<IHistoryRepository>((ref) {
   }
   return RemoteHistoryRepository(ref.watch(apiClientProvider));
 });
+

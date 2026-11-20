@@ -64,3 +64,4 @@ final statsRepositoryProvider = Provider<IStatsRepository>((ref) {
   }
   return RemoteStatsRepository(ref.watch(apiClientProvider));
 });
+

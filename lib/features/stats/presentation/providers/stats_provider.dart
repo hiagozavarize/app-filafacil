@@ -90,3 +90,4 @@ class StatsNotifier extends Notifier<StatsState> {
 final statsProvider = NotifierProvider<StatsNotifier, StatsState>(
   StatsNotifier.new,
 );
+

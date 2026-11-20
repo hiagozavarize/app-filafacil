@@ -218,3 +218,4 @@ class DashboardStats extends Equatable {
     hourlyFlow,
   ];
 }
+

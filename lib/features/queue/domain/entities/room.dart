@@ -38,3 +38,4 @@ class Room extends Equatable {
   @override
   List<Object?> get props => [id, name, specialty, status, currentDoctor];
 }
+
