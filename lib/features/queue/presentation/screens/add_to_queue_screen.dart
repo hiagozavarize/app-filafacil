@@ -11,9 +11,12 @@ import '../../../../core/widgets/section_card.dart';
 import '../../../../core/widgets/success_dialog.dart';
 import '../../../../core/widgets/ubs_select_field.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../domain/entities/patient.dart';
+import '../../domain/entities/queue_ticket.dart';
 import '../providers/queue_provider.dart';
 
 /// 06. `menu inicial - adicionar na fila` (Node `11:247` / `92:43` no Figma).
+/// Integrada a `GET /api/patients/search` e `POST /api/tickets`.
 class AddToQueueScreen extends ConsumerStatefulWidget {
   const AddToQueueScreen({super.key});
 
@@ -22,21 +25,26 @@ class AddToQueueScreen extends ConsumerStatefulWidget {
 }
 
 class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
-  final _nameController = TextEditingController(text: 'Hiago Zavarize');
-  final _cpfController = TextEditingController(text: '412.890.123-00');
-  final _birthController = TextEditingController(text: '10/04/1999');
+  final _cadsusSearchController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _cpfController = TextEditingController();
+  final _susCardController = TextEditingController();
+  final _birthController = TextEditingController();
+  final _notesController = TextEditingController();
 
-  String _selectedSpecialty = 'Clínico Geral';
-  int _selectedDay = 19;
-  String _selectedUbs = 'UBS Centro';
-  String _selectedTime = '07:00';
-  bool _isSubmitting = false;
+  String _selectedSpecialty = 'Clínica Geral';
+  TicketPriority _selectedPriority = TicketPriority.normal;
+  int _selectedDay = DateTime.now().day.clamp(1, 28);
+  late String _selectedUbs;
+  String _selectedTime = '08:00';
+  bool _isSearchingCadsus = false;
+  List<Patient> _cadsusResults = const <Patient>[];
 
   static const List<String> _specialties = <String>[
-    'Clínico Geral',
-    'Pediatra',
-    'Ginecologista',
-    'Dentista',
+    'Clínica Geral',
+    'Pediatria',
+    'Ginecologia',
+    'Odontologia',
   ];
 
   static const List<String> _timeSlots = <String>[
@@ -55,31 +63,114 @@ class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _selectedUbs = ref.read(authProvider).agent.assignedUbs;
+    _nameController.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
   void dispose() {
+    _cadsusSearchController.dispose();
     _nameController.dispose();
     _cpfController.dispose();
+    _susCardController.dispose();
     _birthController.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
-  Future<void> _submitRegistration() async {
-    setState(() => _isSubmitting = true);
-    final dateLabel = '$_selectedDay Nov 2026';
+  Future<void> _searchCadsus() async {
+    final query = _cadsusSearchController.text.trim();
+    if (query.length < 2) {
+      setState(() => _cadsusResults = const <Patient>[]);
+      return;
+    }
+    setState(() => _isSearchingCadsus = true);
+    final results = await ref
+        .read(queueProvider.notifier)
+        .searchPatients(query);
+    if (!mounted) return;
+    setState(() {
+      _isSearchingCadsus = false;
+      _cadsusResults = results;
+    });
+  }
 
-    await ref
+  void _applyPatientFromCadsus(Patient patient) {
+    setState(() {
+      _nameController.text = patient.name;
+      _cpfController.text = patient.cpf;
+      _susCardController.text = patient.cartaoSus;
+      _birthController.text = patient.birthDate;
+      _selectedPriority = TicketPriority.fromApi(patient.priorityGroup);
+      if (patient.conditions.isNotEmpty && _notesController.text.trim().isEmpty) {
+        _notesController.text =
+            'Condições CADSUS: ${patient.conditions.join(', ')}';
+      }
+      _cadsusResults = const <Patient>[];
+    });
+  }
+
+  Future<void> _submitRegistration() async {
+    FocusScope.of(context).unfocus();
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Informe o nome completo do paciente.'),
+          backgroundColor: AppColors.vermelho,
+        ),
+      );
+      return;
+    }
+
+    final now = DateTime.now();
+    const months = <String>[
+      'Jan',
+      'Fev',
+      'Mar',
+      'Abr',
+      'Mai',
+      'Jun',
+      'Jul',
+      'Ago',
+      'Set',
+      'Out',
+      'Nov',
+      'Dez',
+    ];
+    final dateLabel =
+        '${_selectedDay.toString().padLeft(2, '0')} ${months[now.month - 1]} ${now.year}';
+
+    final created = await ref
         .read(queueProvider.notifier)
         .addPatientToQueue(
           patientName: _nameController.text,
           cpf: _cpfController.text,
+          susCard: _susCardController.text,
           birthDate: _birthController.text,
           specialty: _selectedSpecialty,
           ubsName: _selectedUbs,
           scheduledDate: dateLabel,
           scheduledTime: _selectedTime,
+          priority: _selectedPriority,
+          notes: _notesController.text,
         );
 
     if (!mounted) return;
-    setState(() => _isSubmitting = false);
+
+    if (created == null) {
+      final error = ref.read(queueProvider).errorMessage;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Não foi possível emitir a senha.'),
+          backgroundColor: AppColors.vermelho,
+        ),
+      );
+      return;
+    }
 
     await SuccessDialog.show(context, message: 'Adicionado com sucesso!');
 
@@ -91,15 +182,19 @@ class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
   @override
   Widget build(BuildContext context) {
     final agent = ref.watch(authProvider).agent;
+    final queueState = ref.watch(queueProvider);
     final room = switch (_selectedSpecialty) {
-      'Pediatra' => 'Sala 04',
-      'Ginecologista' => 'Sala 03',
-      'Dentista' => 'Sala 01',
-      _ => 'Sala 02',
+      'Pediatria' => 'Consultorio 04',
+      'Ginecologia' => 'Consultorio 03',
+      'Odontologia' => 'Consultorio 02',
+      _ => 'Consultorio 01',
     };
 
     return Scaffold(
-      appBar: FilaFacilHeader(agentName: agent.name, agentRole: agent.role),
+      appBar: FilaFacilHeader(
+        agentName: agent.name,
+        agentRole: agent.roleDisplayLabel,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(23, 20, 24, 36),
         child: Center(
@@ -110,14 +205,94 @@ class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
               children: [
                 const Text('Adicionar na Fila', style: AppTextStyles.pageTitle),
                 const SizedBox(height: 18),
-                // Card 1: Dados do Paciente
+                // Card 1: Dados do Paciente + Busca CADSUS
                 SectionCard(
                   title: 'Dados do Paciente',
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.branco,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.azulClaro),
+                      ),
+                      child: TextField(
+                        controller: _cadsusSearchController,
+                        onSubmitted: (_) => _searchCadsus(),
+                        style: AppTextStyles.bodyRegular,
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(
+                            Icons.person_search_rounded,
+                            color: AppColors.azulUbs,
+                            size: 20,
+                          ),
+                          suffixIcon: _isSearchingCadsus
+                              ? const Padding(
+                                  padding: EdgeInsets.all(10),
+                                  child: SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.azulUbs,
+                                    ),
+                                  ),
+                                )
+                              : IconButton(
+                                  icon: const Icon(
+                                    Icons.search_rounded,
+                                    color: AppColors.azulUbs,
+                                    size: 20,
+                                  ),
+                                  onPressed: _searchCadsus,
+                                ),
+                          hintText: 'Buscar no CADSUS por nome, CPF ou CNS...',
+                          hintStyle: AppTextStyles.caption.copyWith(
+                            color: AppColors.cinzaEscuro.withValues(alpha: 0.6),
+                          ),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 11,
+                          ),
+                          border: InputBorder.none,
+                        ),
+                      ),
+                    ),
+                    if (_cadsusResults.isNotEmpty)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.branco,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.azulClaro),
+                        ),
+                        child: Column(
+                          children: _cadsusResults.take(4).map((p) {
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                p.name,
+                                style: AppTextStyles.bodyMedium.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              subtitle: Text(
+                                'CPF: ${p.cpf} • CNS: ${p.cartaoSus}',
+                                style: AppTextStyles.caption,
+                              ),
+                              trailing: const Icon(
+                                Icons.add_circle_outline_rounded,
+                                color: AppColors.azulUbs,
+                                size: 20,
+                              ),
+                              onTap: () => _applyPatientFromCadsus(p),
+                            );
+                          }).toList(),
+                        ),
+                      ),
                     FormQuestionField(
                       label: 'Nome Completo',
-                      hintText: 'ex: José Maria da Silva',
+                      hintText: 'ex: Benedita Souza Costa',
                       controller: _nameController,
                     ),
                     FormQuestionField(
@@ -127,10 +302,69 @@ class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
                       keyboardType: TextInputType.number,
                     ),
                     FormQuestionField(
+                      label: 'Cartão SUS (CNS)',
+                      hintText: 'ex: 892441029810001',
+                      controller: _susCardController,
+                      keyboardType: TextInputType.number,
+                    ),
+                    FormQuestionField(
                       label: 'Data de Nascimento',
                       hintText: 'ex: dd/mm/aaaa',
                       controller: _birthController,
                       keyboardType: TextInputType.datetime,
+                    ),
+                    FormQuestionField(
+                      label: 'Observações / Triagem',
+                      hintText: 'Queixa principal ou nota de acolhimento',
+                      controller: _notesController,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                // Prioridade Legal do SUS
+                SectionCard(
+                  title: 'Prioridade Legal (SUS)',
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      children: TicketPriority.values.map((priority) {
+                        final isSelected = priority == _selectedPriority;
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(99),
+                          onTap: () =>
+                              setState(() => _selectedPriority = priority),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.azulUbs
+                                  : AppColors.branco,
+                              borderRadius: BorderRadius.circular(99),
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppColors.azulUbs
+                                    : AppColors.azulClaro,
+                              ),
+                            ),
+                            child: Text(
+                              priority.shortLabel,
+                              style: AppTextStyles.caption.copyWith(
+                                color: isSelected
+                                    ? AppColors.branco
+                                    : AppColors.azulUbs,
+                                fontWeight: isSelected
+                                    ? FontWeight.w600
+                                    : FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ],
                 ),
@@ -170,11 +404,11 @@ class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
                   }).toList(),
                 ),
                 const SizedBox(height: 18),
-                // Card 3: Data (Calendário Novembro 2026)
+                // Card 3: Data
                 SectionCard(
                   title: 'Data',
                   children: [
-                    _NovemberCalendarWidget(
+                    _MonthCalendarWidget(
                       selectedDay: _selectedDay,
                       onSelectDay: (d) => setState(() => _selectedDay = d),
                     ),
@@ -244,18 +478,19 @@ class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
                   children: [
                     _SummaryRow(
                       label: 'Paciente:',
-                      value: _nameController.text.isEmpty
-                          ? 'Hiago Zavarize'
-                          : _nameController.text,
+                      value: _nameController.text.trim().isEmpty
+                          ? 'Não informado'
+                          : _nameController.text.trim(),
+                    ),
+                    _SummaryRow(
+                      label: 'Prioridade:',
+                      value: _selectedPriority.shortLabel,
+                      valueColor: AppColors.azulProfundo,
                     ),
                     _SummaryRow(
                       label: 'Especialidade:',
                       value: _selectedSpecialty,
                       valueColor: AppColors.azulUbs,
-                    ),
-                    _SummaryRow(
-                      label: 'Data:',
-                      value: '$_selectedDay Nov 2026',
                     ),
                     _SummaryRow(label: 'Horário:', value: _selectedTime),
                     _SummaryRow(
@@ -264,8 +499,8 @@ class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
                     ),
                     const SizedBox(height: 6),
                     FilaFacilButton(
-                      label: 'Fazer Registro',
-                      isLoading: _isSubmitting,
+                      label: 'Emitir Senha na Fila',
+                      isLoading: queueState.isActionLoading,
                       onPressed: _submitRegistration,
                     ),
                   ],
@@ -311,8 +546,8 @@ class _SummaryRow extends StatelessWidget {
   }
 }
 
-class _NovemberCalendarWidget extends StatelessWidget {
-  const _NovemberCalendarWidget({
+class _MonthCalendarWidget extends StatelessWidget {
+  const _MonthCalendarWidget({
     required this.selectedDay,
     required this.onSelectDay,
   });
@@ -323,6 +558,21 @@ class _NovemberCalendarWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const weekdays = <String>['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+    const monthNames = <String>[
+      'Janeiro',
+      'Fevereiro',
+      'Março',
+      'Abril',
+      'Maio',
+      'Junho',
+      'Julho',
+      'Agosto',
+      'Setembro',
+      'Outubro',
+      'Novembro',
+      'Dezembro',
+    ];
+    final now = DateTime.now();
     final days = List<int>.generate(28, (i) => i + 1);
 
     return Container(
@@ -346,7 +596,7 @@ class _NovemberCalendarWidget extends StatelessWidget {
                 ),
               ),
               Text(
-                'Novembro 2026',
+                '${monthNames[now.month - 1]} ${now.year}',
                 style: AppTextStyles.bodyMedium.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -424,4 +674,3 @@ class _NovemberCalendarWidget extends StatelessWidget {
     );
   }
 }
-

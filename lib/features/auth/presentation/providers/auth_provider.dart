@@ -1,12 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/errors/app_exception.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../domain/entities/health_agent.dart';
 
 class AuthState {
   const AuthState({
     required this.agent,
-    this.isAuthenticated = true,
+    this.isAuthenticated = false,
     this.isLoading = false,
     this.errorMessage,
   });
@@ -39,10 +40,50 @@ class AuthNotifier extends Notifier<AuthState> {
 
   IAuthRepository get _repository => ref.read(authRepositoryProvider);
 
-  Future<bool> login({required String cpf, required String password}) async {
+  String _formatError(Object error) {
+    if (error is AppException) return error.message;
+    return error.toString();
+  }
+
+  /// Tenta restaurar uma sessão JWT salva ao abrir o aplicativo.
+  Future<bool> restoreSession() async {
+    try {
+      final hasToken = await _repository.hasSavedToken();
+      if (!hasToken) return false;
+      final agent = await _repository.getCurrentAgent();
+      state = AuthState(
+        agent: agent,
+        isAuthenticated: true,
+        isLoading: false,
+      );
+      return true;
+    } catch (_) {
+      await _repository.logout();
+      state = state.copyWith(isAuthenticated: false, isLoading: false);
+      return false;
+    }
+  }
+
+  Future<bool> login({
+    required String login,
+    required String password,
+    bool rememberMe = true,
+  }) async {
+    if (login.trim().isEmpty || password.isEmpty) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Informe seu CPF ou e-mail e sua senha.',
+      );
+      return false;
+    }
+
     state = state.copyWith(isLoading: true);
     try {
-      final agent = await _repository.login(cpf: cpf, password: password);
+      final agent = await _repository.login(
+        login: login,
+        password: password,
+        rememberMe: rememberMe,
+      );
       state = AuthState(
         agent: agent,
         isAuthenticated: true,
@@ -50,7 +91,11 @@ class AuthNotifier extends Notifier<AuthState> {
       );
       return true;
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        isAuthenticated: false,
+        errorMessage: _formatError(e),
+      );
       return false;
     }
   }
@@ -60,6 +105,10 @@ class AuthNotifier extends Notifier<AuthState> {
     required String cpf,
     required String email,
     required String password,
+    String? phone,
+    String? role,
+    String? unitName,
+    bool termsAccepted = true,
   }) async {
     state = state.copyWith(isLoading: true);
     try {
@@ -68,6 +117,10 @@ class AuthNotifier extends Notifier<AuthState> {
         cpf: cpf,
         email: email,
         password: password,
+        phone: phone,
+        role: role,
+        unitName: unitName,
+        termsAccepted: termsAccepted,
       );
       state = AuthState(
         agent: agent,
@@ -76,8 +129,35 @@ class AuthNotifier extends Notifier<AuthState> {
       );
       return true;
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: _formatError(e),
+      );
       return false;
+    }
+  }
+
+  Future<bool> forgotPassword({required String emailOrCpf}) async {
+    state = state.copyWith(isLoading: true);
+    try {
+      await _repository.forgotPassword(emailOrCpf: emailOrCpf);
+      state = state.copyWith(isLoading: false);
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: _formatError(e),
+      );
+      return false;
+    }
+  }
+
+  Future<void> refreshProfile() async {
+    try {
+      final agent = await _repository.getCurrentAgent();
+      state = state.copyWith(agent: agent, isAuthenticated: true);
+    } catch (_) {
+      // Mantém estado atual em caso de falha transitória.
     }
   }
 
@@ -88,7 +168,10 @@ class AuthNotifier extends Notifier<AuthState> {
       state = state.copyWith(agent: saved, isLoading: false);
       return true;
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: _formatError(e),
+      );
       return false;
     }
   }
@@ -97,13 +180,21 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(agent: state.agent.copyWith(assignedUbs: ubsName));
   }
 
+  void clearError() {
+    if (state.errorMessage != null) {
+      state = state.copyWith(errorMessage: null);
+    }
+  }
+
   Future<void> logout() async {
     await _repository.logout();
-    state = state.copyWith(isAuthenticated: false);
+    state = const AuthState(
+      agent: HealthAgent.defaultMock,
+      isAuthenticated: false,
+    );
   }
 }
 
 final authProvider = NotifierProvider<AuthNotifier, AuthState>(
   AuthNotifier.new,
 );
-

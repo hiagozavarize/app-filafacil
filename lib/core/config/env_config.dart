@@ -1,36 +1,41 @@
-/// Configuração central de ambiente para conexão futura com API REST e Banco de Dados.
+/// Configuração central de ambiente para conexão com a API REST do FilaFácil UBS.
 ///
-/// Para apontar para a API em produção/homologação, execute:
-/// `flutter run --dart-define=USE_MOCK_BACKEND=false --dart-define=API_BASE_URL=https://api.filafacil.saude.gov.br/v1`
+/// Por padrão o aplicativo se conecta à API em produção no Render:
+/// `https://backend-filafacil.onrender.com`
+///
+/// Para usar o modo offline (dados mockados) durante desenvolvimento:
+/// `flutter run --dart-define=USE_MOCK_BACKEND=true`
+///
+/// Para apontar para um servidor local:
+/// `flutter run --dart-define=API_BASE_URL=http://localhost:3001`
 final class EnvConfig {
   const EnvConfig._();
 
-  /// Define se o aplicativo utiliza os repositórios Mock (pré-populados)
-  /// ou os repositórios remotos conectados à API/Banco de Dados.
+  /// Define se o aplicativo utiliza os repositórios Mock em memória
+  /// ou os repositórios remotos conectados à API REST em produção.
   static const bool useMockBackend = bool.fromEnvironment(
     'USE_MOCK_BACKEND',
-    defaultValue: true,
+    defaultValue: false,
   );
 
-  /// URL base da API REST do FilaFácil UBS.
+  /// URL base da API REST do FilaFácil UBS (sem barra final).
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:8080/api/v1',
+    defaultValue: 'https://backend-filafacil.onrender.com',
   );
 
-  /// URL opcional para WebSocket / SSE (atualização em tempo real do painel da UBS).
+  /// URL para WebSocket (atualização em tempo real do painel da UBS).
   static const String wsBaseUrl = String.fromEnvironment(
     'WS_BASE_URL',
-    defaultValue: 'ws://localhost:8080/ws',
+    defaultValue: 'wss://backend-filafacil.onrender.com',
   );
 
-  /// Timeout de conexão HTTP em milissegundos.
-  static const Duration connectTimeout = Duration(seconds: 15);
+  /// Timeout de conexão HTTP (dimensionado para suportar cold-start no Render).
+  static const Duration connectTimeout = Duration(seconds: 45);
 
-  /// Timeout de leitura HTTP em milissegundos.
-  static const Duration receiveTimeout = Duration(seconds: 20);
+  /// Timeout de leitura HTTP (dimensionado para suportar cold-start no Render).
+  static const Duration receiveTimeout = Duration(seconds: 45);
 
-  /// Versão exibida na Splash Screen.
+  /// Versão exibida no app.
   static const String appVersionLabel = 'SUS Digital • Versão 1.0';
 }
-

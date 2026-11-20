@@ -10,9 +10,15 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../queue/presentation/providers/queue_provider.dart';
 
 /// 04. `menu inicial` (Home do Agente de Saúde - Node `9:261` / `28:2` no Figma).
-class HomeScreen extends ConsumerWidget {
+/// Carrega dados em tempo real de `/api/tickets/waiting` e `/api/tickets`.
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
+  @override
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const String _svgAddQueue = '''
 <svg width="50" height="50" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M16.25 18.75C16.9887 18.75 17.7201 18.6045 18.4026 18.3218C19.0851 18.0391 19.7051 17.6248 20.2275 17.1025C20.7498 16.5801 21.1641 15.9601 21.4468 15.2776C21.7295 14.5951 21.875 13.8637 21.875 13.125C21.875 12.3863 21.7295 11.6549 21.4468 10.9724C21.1641 10.2899 20.7498 9.66985 20.2275 9.14752C19.7051 8.6252 19.0851 8.21086 18.4026 7.92818C17.7201 7.6455 16.9887 7.5 16.25 7.5C14.7582 7.5 13.3274 8.09263 12.2725 9.14752C11.2176 10.2024 10.625 11.6332 10.625 13.125C10.625 14.6168 11.2176 16.0476 12.2725 17.1025C13.3274 18.1574 14.7582 18.75 16.25 18.75ZM16.25 16.25C15.4212 16.25 14.6263 15.9208 14.0403 15.3347C13.4542 14.7487 13.125 13.9538 13.125 13.125C13.125 12.2962 13.4542 11.5013 14.0403 10.9153C14.6263 10.3292 15.4212 10 16.25 10C17.0788 10 17.8737 10.3292 18.4597 10.9153C19.0458 11.5013 19.375 12.2962 19.375 13.125C19.375 13.9538 19.0458 14.7487 18.4597 15.3347C17.8737 15.9208 17.0788 16.25 16.25 16.25ZM7.5 22.5C7.5 21.837 7.76339 21.2011 8.23223 20.7322C8.70107 20.2634 9.33696 20 10 20H22.5C23.163 20 23.7989 20.2634 24.2678 20.7322C24.7366 21.2011 25 21.837 25 22.5V33.75C25 34.8991 24.7737 36.0369 24.3339 37.0985C23.8942 38.1601 23.2497 39.1247 22.4372 39.9372C21.6247 40.7497 20.6601 41.3942 19.5985 41.8339C18.5369 42.2737 17.3991 42.5 16.25 42.5C15.1009 42.5 13.9631 42.2737 12.9015 41.8339C11.8399 41.3942 10.8753 40.7497 10.0628 39.9372C9.2503 39.1247 8.60578 38.1601 8.16605 37.0985C7.72633 36.0369 7.5 34.8991 7.5 33.75V22.5ZM10 22.5V33.75C10 35.4076 10.6585 36.9973 11.8306 38.1694C13.0027 39.3415 14.5924 40 16.25 40C17.9076 40 19.4973 39.3415 20.6694 38.1694C21.8415 36.9973 22.5 35.4076 22.5 33.75V22.5H10ZM24.065 15.3575C23.8458 16.128 23.512 16.8612 23.075 17.5325C24.1075 17.6525 25.0425 18.0825 25.785 18.7325C25.9367 18.7425 26.0917 18.7483 26.25 18.75C27.1363 18.7499 28.01 18.5405 28.7999 18.1386C29.5899 17.7368 30.2737 17.154 30.7956 16.4377C31.3176 15.7214 31.6629 14.892 31.8034 14.0169C31.944 13.1418 31.8757 12.2459 31.6043 11.4023C31.3329 10.5586 30.8659 9.79096 30.2415 9.162C29.6171 8.53303 28.8529 8.06052 28.0112 7.78296C27.1695 7.5054 26.2741 7.43066 25.3981 7.56483C24.522 7.69899 23.69 8.03827 22.97 8.555C23.45 9.2625 23.8225 10.05 24.065 10.8925C24.5047 10.4623 25.0616 10.1715 25.6659 10.0564C26.2702 9.94134 26.895 10.0072 27.4621 10.2457C28.0291 10.4842 28.5131 10.8848 28.8535 11.3972C29.1938 11.9096 29.3754 12.5111 29.3754 13.1263C29.3754 13.7414 29.1938 14.3429 28.8535 14.8553C28.5131 15.3677 28.0291 15.7683 27.4621 16.0068C26.895 16.2453 26.2702 16.3112 25.6659 16.1961C25.0616 16.081 24.5047 15.7877 24.065 15.3575ZM23.7475 42.14C25.054 42.53 26.4336 42.6092 27.7762 42.3714C29.1188 42.1335 30.3872 41.5853 31.4803 40.7702C32.5734 39.9552 33.4609 38.896 34.072 37.6772C34.6831 36.4583 35.0009 35.1135 35 33.75V22.5C35 21.837 34.7366 21.2011 34.2678 20.7322C33.7989 20.2634 33.163 20 32.5 20H26.8325C27.2575 20.735 27.5025 21.59 27.5025 22.5H32.5025V33.75C32.5027 34.6236 32.3197 35.4875 31.9655 36.286C31.6112 37.0845 31.0934 37.7999 30.4456 38.386C29.7978 38.9721 29.0343 39.4159 28.2045 39.6887C27.3746 39.9615 26.4967 40.0574 25.6275 39.97C25.0925 40.7733 24.4675 41.4958 23.7525 42.1375M34.07 15.3575C33.8508 16.128 33.517 16.8612 33.08 17.5325C34.1125 17.6525 35.0475 18.0825 35.79 18.7325C35.9417 18.7425 36.0967 18.7483 36.255 18.75C37.1413 18.7499 38.015 18.5405 38.8049 18.1386C39.5949 17.7368 40.2787 17.154 40.8006 16.4377C41.3226 15.7214 41.6679 14.892 41.8084 14.0169C41.949 13.1418 41.8807 12.2459 41.6093 11.4023C41.3379 10.5586 40.8709 9.79096 40.2465 9.162C39.6221 8.53303 38.8579 8.06052 38.0162 7.78296C37.1745 7.5054 36.2791 7.43066 35.4031 7.56483C34.527 7.69899 33.695 8.03827 32.975 8.555C33.455 9.2625 33.8275 10.05 34.07 10.8925C34.5097 10.4623 35.0666 10.1715 35.6709 10.0564C36.2752 9.94134 36.9 10.0072 37.4671 10.2457C38.0341 10.4842 38.5181 10.8848 38.8585 11.3972C39.1988 11.9096 39.3804 12.5111 39.3804 13.1263C39.3804 13.7414 39.1988 14.3429 38.8585 14.8553C38.5181 15.3677 38.0341 15.7683 37.4671 16.0068C36.9 16.2453 36.2752 16.3112 35.6709 16.1961C35.0666 16.081 34.5097 15.7877 34.07 15.3575ZM33.7525 42.14C34.5492 42.3783 35.3825 42.4992 36.2525 42.5025C38.5731 42.5025 40.7987 41.5806 42.4397 39.9397C44.0806 38.2987 45.0025 36.0731 45.0025 33.7525V22.5C45.0025 21.837 44.7391 21.2011 44.2703 20.7322C43.8014 20.2634 43.1655 20 42.5025 20H36.835C37.26 20.735 37.505 21.59 37.505 22.5H42.505V33.75C42.5052 34.6236 42.3222 35.4875 41.968 36.286C41.6137 37.0845 41.0959 37.7999 40.4481 38.386C39.8003 38.9721 39.0368 39.4159 38.207 39.6887C37.3771 39.9615 36.4992 40.0574 35.63 39.97C35.095 40.7733 34.47 41.4958 33.755 42.1375" fill="#F5F7FA"/>
@@ -38,7 +44,15 @@ class HomeScreen extends ConsumerWidget {
 ''';
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    Future<void>.microtask(() {
+      ref.read(queueProvider.notifier).loadQueue();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final agent = ref.watch(authProvider).agent;
     final queueState = ref.watch(queueProvider);
     final nextTicket = queueState.nextInLineTicket;
@@ -46,140 +60,220 @@ class HomeScreen extends ConsumerWidget {
     return Scaffold(
       appBar: FilaFacilHeader(
         agentName: agent.name,
-        agentRole: agent.role,
+        agentRole: agent.roleDisplayLabel,
         showBackButton: false,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              children: [
-                // Banner da Unidade Ativa
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 14,
+      body: RefreshIndicator(
+        onRefresh: () => ref.read(queueProvider.notifier).loadQueue(),
+        color: AppColors.azulUbs,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Column(
+                children: [
+                  // Banner da Unidade Ativa
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.cinzaClaro,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.azulClaro),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Unidade Ativa: ${agent.assignedUbs}',
+                                style: AppTextStyles.cardTitle.copyWith(
+                                  color: AppColors.azulUbs,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            if (queueState.isLoading)
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.azulUbs,
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${queueState.waitingCount} pacientes aguardando • ${queueState.inAttendanceCount.toString().padLeft(2, '0')} em atendimento agora',
+                          style: AppTextStyles.bodyRegular.copyWith(
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  decoration: BoxDecoration(
-                    color: AppColors.cinzaClaro,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.azulClaro),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Unidade Ativa: ${agent.assignedUbs}',
-                        style: AppTextStyles.cardTitle.copyWith(
-                          color: AppColors.azulUbs,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
+                  if (queueState.errorMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.vermelho.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.vermelho.withValues(alpha: 0.35),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${queueState.waitingCount} pacientes aguardando • ${queueState.inAttendanceCount.toString().padLeft(2, '0')} em atendimento agora',
-                        style: AppTextStyles.bodyRegular.copyWith(fontSize: 12),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.cloud_off_rounded,
+                            color: AppColors.vermelho,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              queueState.errorMessage!,
+                              style: AppTextStyles.caption.copyWith(
+                                color: AppColors.vermelho,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () =>
+                                ref.read(queueProvider.notifier).loadQueue(),
+                            child: const Text('Tentar'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  // Grid 2x2 de Opções do Agente de Saúde (150x150 cada no Figma)
+                  Wrap(
+                    spacing: 14,
+                    runSpacing: 14,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      _AgentMenuCard(
+                        label: 'Adicionar na Fila',
+                        svgAsset: _svgAddQueue,
+                        onTap: () => context.push('/add-to-queue'),
+                      ),
+                      _AgentMenuCard(
+                        label: 'Consultar Fila',
+                        svgAsset: _svgConsultQueue,
+                        onTap: () => context.push('/consult-queue'),
+                      ),
+                      _AgentMenuCard(
+                        label: 'Estatísticas',
+                        svgAsset: _svgStats,
+                        onTap: () => context.push('/stats'),
+                      ),
+                      _AgentMenuCard(
+                        label: 'Histórico',
+                        svgAsset: _svgHistory,
+                        onTap: () => context.push('/history'),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 28),
-                // Grid 2x2 de Opções do Agente de Saúde (150x150 cada no Figma)
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    _AgentMenuCard(
-                      label: 'Adicionar na Fila',
-                      svgAsset: _svgAddQueue,
-                      onTap: () => context.push('/add-to-queue'),
-                    ),
-                    _AgentMenuCard(
-                      label: 'Consultar Fila',
-                      svgAsset: _svgConsultQueue,
-                      onTap: () => context.push('/consult-queue'),
-                    ),
-                    _AgentMenuCard(
-                      label: 'Estatísticas',
-                      svgAsset: _svgStats,
-                      onTap: () => context.push('/stats'),
-                    ),
-                    _AgentMenuCard(
-                      label: 'Histórico',
-                      svgAsset: _svgHistory,
-                      onTap: () => context.push('/history'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 28),
-                // Card Atalho Próximo da Fila
-                if (nextTicket != null)
-                  InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () {
-                      ref
-                          .read(queueProvider.notifier)
-                          .selectTicketForCall(nextTicket);
-                      context.push('/patient-call');
-                    },
-                    child: Container(
+                  const SizedBox(height: 24),
+                  // Card Atalho Próximo da Fila
+                  if (nextTicket != null)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () {
+                        ref
+                            .read(queueProvider.notifier)
+                            .selectTicketForCall(nextTicket);
+                        context.push('/patient-call');
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 16,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.cinzaClaro,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.azulClaro),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Próximo da Fila (${nextTicket.positionBadge})',
+                                  style: AppTextStyles.bodyMedium.copyWith(
+                                    color: AppColors.azulUbs,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.verdeClaro,
+                                    borderRadius: BorderRadius.circular(99),
+                                  ),
+                                  child: Text(
+                                    nextTicket.room,
+                                    style: AppTextStyles.caption.copyWith(
+                                      color: AppColors.verdeSaude,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '${nextTicket.patientName} • ${nextTicket.specialty} (${nextTicket.scheduledTime})',
+                              style: AppTextStyles.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else if (queueState.hasLoadedOnce && !queueState.isLoading)
+                    Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 18,
-                        vertical: 16,
+                        vertical: 14,
                       ),
                       decoration: BoxDecoration(
                         color: AppColors.cinzaClaro,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: AppColors.azulClaro),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Próximo da Fila (${nextTicket.positionBadge})',
-                                style: AppTextStyles.bodyMedium.copyWith(
-                                  color: AppColors.azulUbs,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.verdeClaro,
-                                  borderRadius: BorderRadius.circular(99),
-                                ),
-                                child: Text(
-                                  '${nextTicket.room} Livre',
-                                  style: AppTextStyles.caption.copyWith(
-                                    color: AppColors.verdeSaude,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${nextTicket.patientName} • ${nextTicket.specialty} (${nextTicket.scheduledTime})',
-                            style: AppTextStyles.bodyMedium,
-                          ),
-                        ],
+                      child: Text(
+                        'Nenhum paciente na fila no momento. Toque em "Adicionar na Fila" para emitir uma nova senha.',
+                        style: AppTextStyles.bodyRegular.copyWith(fontSize: 13),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -235,4 +329,3 @@ class _AgentMenuCard extends StatelessWidget {
     );
   }
 }
-

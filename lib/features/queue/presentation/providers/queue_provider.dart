@@ -1,63 +1,53 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/errors/app_exception.dart';
 import '../../data/repositories/queue_repository.dart';
+import '../../domain/entities/patient.dart';
 import '../../domain/entities/queue_ticket.dart';
+import '../../domain/entities/room.dart';
 
 class QueueState {
   const QueueState({
     required this.tickets,
+    this.rooms = const <Room>[],
     this.selectedUbs = 'UBS Centro',
     this.selectedSpecialty = 'Todos',
     this.searchQuery = '',
-    this.historyFilter = 'Todos',
-    this.historySearchQuery = '',
     this.latestCreatedTicket,
     this.selectedCallTicket,
+    this.isLoading = false,
+    this.isActionLoading = false,
+    this.hasLoadedOnce = false,
+    this.errorMessage,
   });
 
   final List<QueueTicket> tickets;
+  final List<Room> rooms;
   final String selectedUbs;
   final String selectedSpecialty;
   final String searchQuery;
-  final String historyFilter;
-  final String historySearchQuery;
   final QueueTicket? latestCreatedTicket;
   final QueueTicket? selectedCallTicket;
+  final bool isLoading;
+  final bool isActionLoading;
+  final bool hasLoadedOnce;
+  final String? errorMessage;
 
-  /// Pacientes ativos na fila (Em Atendimento, Próximo ou Aguardando) filtrados.
+  /// Pacientes ativos na fila (Em Atendimento, Chamado, Próximo ou Aguardando) filtrados.
   List<QueueTicket> get activeFilteredTickets {
     final q = searchQuery.trim().toLowerCase();
     return tickets.where((t) {
       if (!t.status.isActiveInQueue) return false;
       final matchSpec =
           selectedSpecialty == 'Todos' ||
-          t.specialty.toLowerCase().contains(selectedSpecialty.toLowerCase());
+          _normalize(t.specialty).contains(_normalize(selectedSpecialty));
       final matchQuery =
           q.isEmpty ||
           t.patientName.toLowerCase().contains(q) ||
           t.cpf.toLowerCase().contains(q) ||
-          t.ticketCode.toLowerCase().contains(q);
+          t.ticketCode.toLowerCase().contains(q) ||
+          t.susCard.toLowerCase().contains(q);
       return matchSpec && matchQuery;
-    }).toList();
-  }
-
-  /// Registros do Histórico (Concluído, Ausente, Cancelado) filtrados.
-  List<QueueTicket> get historyFilteredTickets {
-    final q = historySearchQuery.trim().toLowerCase();
-    return tickets.where((t) {
-      if (t.status.isActiveInQueue) return false;
-      final matchFilter = switch (historyFilter) {
-        'Concluídos' => t.status == QueueStatus.completed,
-        'Ausentes' =>
-          t.status == QueueStatus.absent || t.status == QueueStatus.cancelled,
-        _ => true,
-      };
-      final matchQuery =
-          q.isEmpty ||
-          t.patientName.toLowerCase().contains(q) ||
-          t.cpf.toLowerCase().contains(q) ||
-          t.protocol.toLowerCase().contains(q);
-      return matchFilter && matchQuery;
     }).toList();
   }
 
@@ -67,8 +57,13 @@ class QueueState {
       )
       .length;
 
-  int get inAttendanceCount =>
-      tickets.where((t) => t.status == QueueStatus.inAttendance).length;
+  int get inAttendanceCount => tickets
+      .where(
+        (t) =>
+            t.status == QueueStatus.inAttendance ||
+            t.status == QueueStatus.called,
+      )
+      .length;
 
   int get completedCount =>
       tickets.where((t) => t.status == QueueStatus.completed).length;
@@ -77,6 +72,8 @@ class QueueState {
       tickets.where((t) => t.status == QueueStatus.absent).length;
 
   QueueTicket? get nextInLineTicket {
+    final calledList = tickets.where((t) => t.status == QueueStatus.called);
+    if (calledList.isNotEmpty) return calledList.first;
     final nextList = tickets.where((t) => t.status == QueueStatus.next);
     if (nextList.isNotEmpty) return nextList.first;
     final waitingList = tickets.where((t) => t.status == QueueStatus.waiting);
@@ -87,25 +84,44 @@ class QueueState {
     return activeList.isNotEmpty ? activeList.first : null;
   }
 
+  static String _normalize(String s) {
+    return s
+        .toLowerCase()
+        .replaceAll('í', 'i')
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ã', 'a')
+        .replaceAll('ç', 'c');
+  }
+
   QueueState copyWith({
     List<QueueTicket>? tickets,
+    List<Room>? rooms,
     String? selectedUbs,
     String? selectedSpecialty,
     String? searchQuery,
-    String? historyFilter,
-    String? historySearchQuery,
     QueueTicket? latestCreatedTicket,
     QueueTicket? selectedCallTicket,
+    bool? isLoading,
+    bool? isActionLoading,
+    bool? hasLoadedOnce,
+    String? errorMessage,
+    bool clearError = false,
   }) {
     return QueueState(
       tickets: tickets ?? this.tickets,
+      rooms: rooms ?? this.rooms,
       selectedUbs: selectedUbs ?? this.selectedUbs,
       selectedSpecialty: selectedSpecialty ?? this.selectedSpecialty,
       searchQuery: searchQuery ?? this.searchQuery,
-      historyFilter: historyFilter ?? this.historyFilter,
-      historySearchQuery: historySearchQuery ?? this.historySearchQuery,
       latestCreatedTicket: latestCreatedTicket ?? this.latestCreatedTicket,
       selectedCallTicket: selectedCallTicket ?? this.selectedCallTicket,
+      isLoading: isLoading ?? this.isLoading,
+      isActionLoading: isActionLoading ?? this.isActionLoading,
+      hasLoadedOnce: hasLoadedOnce ?? this.hasLoadedOnce,
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }
@@ -113,193 +129,86 @@ class QueueState {
 class QueueNotifier extends Notifier<QueueState> {
   @override
   QueueState build() {
-    final initialTickets = _initialSyncTickets();
-    return QueueState(
-      tickets: initialTickets,
-      selectedCallTicket: initialTickets.first,
-    );
+    return const QueueState(tickets: <QueueTicket>[]);
   }
 
   IQueueRepository get _repository => ref.read(queueRepositoryProvider);
 
-  List<QueueTicket> _initialSyncTickets() {
-    return const <QueueTicket>[
-      QueueTicket(
-        id: 'q-01',
-        positionNumber: 1,
-        ticketCode: 'CG-011',
-        protocol: '#2026-0895',
-        patientName: 'Maria Aparecida Souza',
-        cpf: '412.890.123-00',
-        birthDate: '14/03/1958',
-        age: 68,
-        susCard: '898 0012 3456 7890',
-        specialty: 'Clínico Geral',
-        room: 'Sala 02',
-        ubsName: 'UBS Centro',
-        scheduledDate: '19 Nov 2026',
-        scheduledTime: '07:00',
-        priorityLabel: 'Prioridade: Idoso 60+',
-        triageNotes: 'Controle de PA e receita',
-        status: QueueStatus.inAttendance,
-        doctorName: 'Dr. Roberto',
-      ),
-      QueueTicket(
-        id: 'q-02',
-        positionNumber: 2,
-        ticketCode: 'CG-012',
-        protocol: '#2026-0896',
-        patientName: 'José Carlos Oliveira',
-        cpf: '198.342.567-10',
-        birthDate: '22/07/1984',
-        age: 42,
-        susCard: '898 0045 8821 1029',
-        specialty: 'Clínico Geral',
-        room: 'Sala 02',
-        ubsName: 'UBS Centro',
-        scheduledDate: '19 Nov 2026',
-        scheduledTime: '07:30',
-        priorityLabel: 'Atendimento Regular',
-        triageNotes: 'Avaliação clínica de rotina',
-        status: QueueStatus.next,
-        doctorName: 'Dr. Roberto',
-      ),
-      QueueTicket(
-        id: 'q-03',
-        positionNumber: 3,
-        ticketCode: 'PD-004',
-        protocol: '#2026-0897',
-        patientName: 'Ana Beatriz Lima',
-        cpf: '765.120.998-45',
-        birthDate: '09/11/1996',
-        age: 30,
-        susCard: '898 0078 1290 4410',
-        specialty: 'Pediatra',
-        room: 'Sala 04',
-        ubsName: 'UBS Centro',
-        scheduledDate: '19 Nov 2026',
-        scheduledTime: '08:00',
-        priorityLabel: 'Prioridade: Gestante / Criança',
-        triageNotes: 'Acompanhamento pediátrico e vacinas',
-        status: QueueStatus.waiting,
-        doctorName: 'Dra. Helena',
-      ),
-      QueueTicket(
-        id: 'q-04',
-        positionNumber: 4,
-        ticketCode: 'OD-008',
-        protocol: '#2026-0898',
-        patientName: 'Raimundo Nonato',
-        cpf: '309.441.872-91',
-        birthDate: '02/05/1975',
-        age: 51,
-        susCard: '898 0091 5532 0012',
-        specialty: 'Dentista',
-        room: 'Sala 01',
-        ubsName: 'UBS Centro',
-        scheduledDate: '19 Nov 2026',
-        scheduledTime: '08:30',
-        priorityLabel: 'Atendimento Regular',
-        triageNotes: 'Avaliação odontológica preventiva',
-        status: QueueStatus.waiting,
-        doctorName: 'Dr. Marcos',
-      ),
-      QueueTicket(
-        id: 'h-01',
-        positionNumber: 1,
-        ticketCode: 'CG-001',
-        protocol: '#2026-0891',
-        patientName: 'Hiago Zavarize',
-        cpf: '042.891.653-20',
-        birthDate: '10/04/1999',
-        age: 27,
-        susCard: '704 8921 3301 0001',
-        specialty: 'Clínico Geral',
-        room: 'Sala 02',
-        ubsName: 'UBS Central',
-        scheduledDate: '16 Nov 2026',
-        scheduledTime: '07:00',
-        priorityLabel: 'Atendimento Regular',
-        triageNotes: 'Check-up anual concluído',
-        status: QueueStatus.completed,
-      ),
-      QueueTicket(
-        id: 'h-02',
-        positionNumber: 2,
-        ticketCode: 'PD-002',
-        protocol: '#2026-0890',
-        patientName: 'Fernanda Costa Mendes',
-        cpf: '519.220.418-33',
-        birthDate: '18/08/1992',
-        age: 34,
-        susCard: '898 0031 9920 1122',
-        specialty: 'Pediatra',
-        room: 'Sala 04',
-        ubsName: 'UBS Centro',
-        scheduledDate: '16 Nov 2026',
-        scheduledTime: '07:30',
-        priorityLabel: 'Prioridade: Gestante / Criança',
-        triageNotes: 'Puericultura concluída',
-        status: QueueStatus.completed,
-      ),
-      QueueTicket(
-        id: 'h-03',
-        positionNumber: 3,
-        ticketCode: 'OD-003',
-        protocol: '#2026-0889',
-        patientName: 'Carlos Eduardo Rocha',
-        cpf: '623.110.892-70',
-        birthDate: '25/01/1988',
-        age: 38,
-        susCard: '898 0019 8827 3311',
-        specialty: 'Dentista',
-        room: 'Sala 01',
-        ubsName: 'UBS Bacuri',
-        scheduledDate: '16 Nov 2026',
-        scheduledTime: '08:00',
-        priorityLabel: 'Atendimento Regular',
-        triageNotes: 'Paciente não respondeu à chamada',
-        status: QueueStatus.absent,
-      ),
-      QueueTicket(
-        id: 'h-04',
-        positionNumber: 4,
-        ticketCode: 'GN-005',
-        protocol: '#2026-0874',
-        patientName: 'Juliana Alves Pereira',
-        cpf: '812.540.319-12',
-        birthDate: '12/09/1990',
-        age: 36,
-        susCard: '898 0065 4412 9087',
-        specialty: 'Ginecologista',
-        room: 'Sala 03',
-        ubsName: 'UBS Santa Inês',
-        scheduledDate: '15 Nov 2026',
-        scheduledTime: '14:00',
-        priorityLabel: 'Atendimento Regular',
-        triageNotes: 'Preventivo realizado',
-        status: QueueStatus.completed,
-      ),
-      QueueTicket(
-        id: 'h-05',
-        positionNumber: 5,
-        ticketCode: 'CG-009',
-        protocol: '#2026-0862',
-        patientName: 'Antônio Marcos Santos',
-        cpf: '201.987.654-88',
-        birthDate: '05/06/1970',
-        age: 56,
-        susCard: '898 0054 3210 7654',
-        specialty: 'Clínico Geral',
-        room: 'Sala 02',
-        ubsName: 'UBS Centro',
-        scheduledDate: '15 Nov 2026',
-        scheduledTime: '15:30',
-        priorityLabel: 'Atendimento Regular',
-        triageNotes: 'Cancelado a pedido do paciente',
-        status: QueueStatus.cancelled,
-      ),
-    ];
+  String _formatError(Object error) {
+    if (error is AppException) return error.message;
+    return error.toString();
+  }
+
+  /// Carrega a fila atual (priorizada pelo SUS + em atendimento) e salas da API.
+  Future<void> loadQueue({bool silent = false}) async {
+    if (!silent) {
+      state = state.copyWith(isLoading: true, clearError: true);
+    }
+    try {
+      final results = await Future.wait<dynamic>(<Future<dynamic>>[
+        _repository.getWaitingQueue(),
+        _repository.getQueueTickets(),
+        _repository.getRooms().catchError((_) => const <Room>[]),
+      ]);
+
+      final waitingPrioritized = results[0] as List<QueueTicket>;
+      final allTickets = results[1] as List<QueueTicket>;
+      final rooms = results[2] as List<Room>;
+
+      // Mescla preservando a ordem legal do SUS vinda de /api/tickets/waiting
+      // e incluindo senhas CALLED / IN_PROGRESS vindas de /api/tickets.
+      final merged = <QueueTicket>[];
+      final seenIds = <String>{};
+
+      for (final t in allTickets) {
+        if (t.status == QueueStatus.inAttendance ||
+            t.status == QueueStatus.called) {
+          merged.add(t);
+          seenIds.add(t.id);
+        }
+      }
+
+      var pos = 1;
+      for (final t in waitingPrioritized) {
+        if (seenIds.add(t.id)) {
+          merged.add(
+            t.copyWith(
+              positionNumber: pos,
+              status: pos == 1 ? QueueStatus.next : QueueStatus.waiting,
+            ),
+          );
+          pos++;
+        }
+      }
+
+      for (final t in allTickets) {
+        if (seenIds.add(t.id)) {
+          merged.add(t);
+        }
+      }
+
+      final currentSelected = state.selectedCallTicket;
+      QueueTicket? refreshedSelected;
+      if (currentSelected != null) {
+        final match = merged.where((t) => t.id == currentSelected.id);
+        refreshedSelected = match.isNotEmpty ? match.first : currentSelected;
+      }
+
+      state = state.copyWith(
+        tickets: merged,
+        rooms: rooms,
+        selectedCallTicket: refreshedSelected,
+        isLoading: false,
+        hasLoadedOnce: true,
+        clearError: true,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        hasLoadedOnce: true,
+        errorMessage: _formatError(e),
+      );
+    }
   }
 
   void setSelectedUbs(String ubs) {
@@ -314,19 +223,20 @@ class QueueNotifier extends Notifier<QueueState> {
     state = state.copyWith(searchQuery: query);
   }
 
-  void setHistoryFilter(String filter) {
-    state = state.copyWith(historyFilter: filter);
-  }
-
-  void setHistorySearchQuery(String query) {
-    state = state.copyWith(historySearchQuery: query);
-  }
-
   void selectTicketForCall(QueueTicket ticket) {
     state = state.copyWith(selectedCallTicket: ticket);
   }
 
-  Future<QueueTicket> addPatientToQueue({
+  Future<List<Patient>> searchPatients(String query) async {
+    try {
+      return await _repository.searchPatients(query);
+    } catch (_) {
+      return const <Patient>[];
+    }
+  }
+
+  /// Emite uma nova senha via `POST /api/tickets`.
+  Future<QueueTicket?> addPatientToQueue({
     required String patientName,
     required String cpf,
     required String birthDate,
@@ -334,69 +244,198 @@ class QueueNotifier extends Notifier<QueueState> {
     required String ubsName,
     required String scheduledDate,
     required String scheduledTime,
+    String susCard = '',
+    TicketPriority priority = TicketPriority.normal,
+    String notes = '',
   }) async {
-    final activeCount = state.tickets
-        .where((t) => t.status.isActiveInQueue)
-        .length;
-    final nextPos = activeCount + 1;
-    final prefix = switch (specialty) {
-      'Pediatra' => 'PD',
-      'Ginecologista' => 'GN',
-      'Dentista' => 'OD',
-      _ => 'CG',
-    };
-    final room = switch (specialty) {
-      'Pediatra' => 'Sala 04',
-      'Ginecologista' => 'Sala 03',
-      'Dentista' => 'Sala 01',
-      _ => 'Sala 02',
-    };
+    state = state.copyWith(isActionLoading: true, clearError: true);
+    try {
+      final activeCount = state.tickets
+          .where((t) => t.status.isActiveInQueue)
+          .length;
+      final nextPos = activeCount + 1;
+      final room = _resolveRoomForSpecialty(specialty);
 
-    final newTicket = QueueTicket(
-      id: 'q-${DateTime.now().millisecondsSinceEpoch}',
-      positionNumber: nextPos,
-      ticketCode: '$prefix-${(10 + nextPos).toString().padLeft(3, '0')}',
-      protocol: '#2026-089${nextPos + 1}',
-      patientName: patientName.trim().isEmpty
-          ? 'José Maria da Silva'
-          : patientName.trim(),
-      cpf: cpf.trim().isEmpty ? '412.890.123-00' : cpf.trim(),
-      birthDate: birthDate.trim().isEmpty ? '12/05/1985' : birthDate.trim(),
-      age: 41,
-      susCard: '898 0014 2289 7741',
-      specialty: specialty,
-      room: room,
-      ubsName: ubsName,
-      scheduledDate: scheduledDate,
-      scheduledTime: scheduledTime,
-      priorityLabel: 'Atendimento Regular',
-      triageNotes: 'Agendado pelo Agente de Saúde',
-      status: QueueStatus.waiting,
-    );
+      final draftTicket = QueueTicket(
+        id: 'local-${DateTime.now().millisecondsSinceEpoch}',
+        positionNumber: nextPos,
+        ticketCode: '',
+        protocol: '',
+        patientName: patientName.trim(),
+        cpf: cpf.trim(),
+        birthDate: birthDate.trim(),
+        age: _calculateAge(birthDate),
+        susCard: susCard.trim(),
+        specialty: specialty,
+        room: room,
+        ubsName: ubsName,
+        scheduledDate: scheduledDate,
+        scheduledTime: scheduledTime,
+        priorityLabel: priority.displayLabel,
+        priority: priority,
+        triageNotes: notes.trim().isNotEmpty
+            ? notes.trim()
+            : 'Agendamento $scheduledDate às $scheduledTime ($ubsName)',
+        status: QueueStatus.waiting,
+      );
 
-    final created = await _repository.createTicket(newTicket);
-    final updatedList = <QueueTicket>[...state.tickets, created];
-    state = state.copyWith(
-      tickets: updatedList,
-      latestCreatedTicket: created,
-    );
-    return created;
+      final created = await _repository.createTicket(draftTicket);
+      final enriched = created.copyWith(
+        positionNumber: created.positionNumber > 0
+            ? created.positionNumber
+            : nextPos,
+        ubsName: ubsName,
+        room: created.room.isNotEmpty ? created.room : room,
+      );
+
+      state = state.copyWith(
+        tickets: <QueueTicket>[...state.tickets, enriched],
+        latestCreatedTicket: enriched,
+        isActionLoading: false,
+        clearError: true,
+      );
+      return enriched;
+    } catch (e) {
+      state = state.copyWith(
+        isActionLoading: false,
+        errorMessage: _formatError(e),
+      );
+      return null;
+    }
   }
 
-  Future<void> updateStatus(String ticketId, QueueStatus newStatus) async {
-    await _repository.updateTicketStatus(
-      ticketId: ticketId,
-      newStatus: newStatus,
-    );
-    final updatedList = state.tickets.map((t) {
-      if (t.id == ticketId) {
-        return t.copyWith(status: newStatus);
-      }
-      return t;
-    }).toList();
+  /// Chama automaticamente o próximo paciente prioritário (`POST /api/tickets/call-next`).
+  Future<QueueTicket?> callNext({
+    required String roomName,
+    String? doctorName,
+  }) async {
+    state = state.copyWith(isActionLoading: true, clearError: true);
+    try {
+      final called = await _repository.callNextTicket(
+        roomName: roomName,
+        doctorName: doctorName,
+      );
+      _upsertTicket(called, selectForCall: true);
+      state = state.copyWith(isActionLoading: false, clearError: true);
+      return called;
+    } catch (e) {
+      state = state.copyWith(
+        isActionLoading: false,
+        errorMessage: _formatError(e),
+      );
+      return null;
+    }
+  }
 
-    final updatedSelected = state.selectedCallTicket?.id == ticketId
-        ? state.selectedCallTicket?.copyWith(status: newStatus)
+  /// Chama uma senha específica para o consultório (`POST /api/tickets/{id}/call`).
+  Future<QueueTicket?> callTicket({
+    required String ticketId,
+    required String roomName,
+    String? doctorName,
+  }) async {
+    state = state.copyWith(isActionLoading: true, clearError: true);
+    try {
+      final called = await _repository.callTicket(
+        ticketId: ticketId,
+        roomName: roomName,
+        doctorName: doctorName,
+      );
+      _upsertTicket(called, selectForCall: true);
+      state = state.copyWith(isActionLoading: false, clearError: true);
+      return called;
+    } catch (e) {
+      state = state.copyWith(
+        isActionLoading: false,
+        errorMessage: _formatError(e),
+      );
+      return null;
+    }
+  }
+
+  /// Rechama a senha no Painel da TV (`POST /api/tickets/{id}/recall`).
+  Future<bool> recallTicket(String ticketId) async {
+    state = state.copyWith(isActionLoading: true, clearError: true);
+    try {
+      final updated = await _repository.recallTicket(ticketId);
+      _upsertTicket(updated, selectForCall: true);
+      state = state.copyWith(isActionLoading: false, clearError: true);
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isActionLoading: false,
+        errorMessage: _formatError(e),
+      );
+      return false;
+    }
+  }
+
+  /// Inicia o atendimento no consultório (`POST /api/tickets/{id}/start`).
+  Future<bool> startAttendance(String ticketId) async {
+    state = state.copyWith(isActionLoading: true, clearError: true);
+    try {
+      final updated = await _repository.startAttendance(ticketId);
+      _upsertTicket(updated, selectForCall: true);
+      state = state.copyWith(isActionLoading: false, clearError: true);
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isActionLoading: false,
+        errorMessage: _formatError(e),
+      );
+      return false;
+    }
+  }
+
+  /// Finaliza o atendimento com anotações e CID-10 opcionais (`POST /api/tickets/{id}/finish`).
+  Future<bool> finishAttendance({
+    required String ticketId,
+    String? notes,
+    String? cid10,
+  }) async {
+    state = state.copyWith(isActionLoading: true, clearError: true);
+    try {
+      final updated = await _repository.finishAttendance(
+        ticketId: ticketId,
+        notes: notes,
+        cid10: cid10,
+      );
+      _upsertTicket(updated);
+      state = state.copyWith(isActionLoading: false, clearError: true);
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isActionLoading: false,
+        errorMessage: _formatError(e),
+      );
+      return false;
+    }
+  }
+
+  /// Marca o paciente como ausente (`POST /api/tickets/{id}/absent`).
+  Future<bool> markAbsent(String ticketId) async {
+    state = state.copyWith(isActionLoading: true, clearError: true);
+    try {
+      final updated = await _repository.markAbsent(ticketId);
+      _upsertTicket(updated);
+      state = state.copyWith(isActionLoading: false, clearError: true);
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isActionLoading: false,
+        errorMessage: _formatError(e),
+      );
+      return false;
+    }
+  }
+
+  void _upsertTicket(QueueTicket updated, {bool selectForCall = false}) {
+    final exists = state.tickets.any((t) => t.id == updated.id);
+    final updatedList = exists
+        ? state.tickets.map((t) => t.id == updated.id ? updated : t).toList()
+        : <QueueTicket>[updated, ...state.tickets];
+
+    final updatedSelected = selectForCall || state.selectedCallTicket?.id == updated.id
+        ? updated
         : state.selectedCallTicket;
 
     state = state.copyWith(
@@ -404,9 +443,51 @@ class QueueNotifier extends Notifier<QueueState> {
       selectedCallTicket: updatedSelected,
     );
   }
+
+  String _resolveRoomForSpecialty(String specialty) {
+    final norm = QueueState._normalize(specialty);
+    for (final room in state.rooms) {
+      if (QueueState._normalize(room.specialty).contains(norm) ||
+          norm.contains(QueueState._normalize(room.specialty))) {
+        return room.name;
+      }
+    }
+    if (norm.contains('pediatr')) return 'Consultorio 04';
+    if (norm.contains('gineco')) return 'Consultorio 03';
+    if (norm.contains('dent') || norm.contains('odont')) {
+      return 'Consultorio 02';
+    }
+    return 'Consultorio 01';
+  }
+
+  int _calculateAge(String birthDate) {
+    final trimmed = birthDate.trim();
+    if (trimmed.isEmpty) return 0;
+    DateTime? dob;
+    if (trimmed.contains('/')) {
+      final parts = trimmed.split('/');
+      if (parts.length == 3) {
+        final d = int.tryParse(parts[0]);
+        final m = int.tryParse(parts[1]);
+        final y = int.tryParse(parts[2]);
+        if (d != null && m != null && y != null) {
+          dob = DateTime(y, m, d);
+        }
+      }
+    } else {
+      dob = DateTime.tryParse(trimmed);
+    }
+    if (dob == null) return 0;
+    final now = DateTime.now();
+    var age = now.year - dob.year;
+    if (now.month < dob.month ||
+        (now.month == dob.month && now.day < dob.day)) {
+      age--;
+    }
+    return age < 0 ? 0 : age;
+  }
 }
 
 final queueProvider = NotifierProvider<QueueNotifier, QueueState>(
   QueueNotifier.new,
 );
-

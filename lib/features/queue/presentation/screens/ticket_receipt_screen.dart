@@ -19,123 +19,156 @@ class TicketReceiptScreen extends ConsumerWidget {
     final agent = ref.watch(authProvider).agent;
     final queueState = ref.watch(queueProvider);
     final ticket =
-        queueState.latestCreatedTicket ?? queueState.tickets.first;
+        queueState.latestCreatedTicket ??
+        (queueState.tickets.isNotEmpty ? queueState.tickets.last : null);
 
     return Scaffold(
-      appBar: FilaFacilHeader(agentName: agent.name, agentRole: agent.role),
+      appBar: FilaFacilHeader(
+        agentName: agent.name,
+        agentRole: agent.roleDisplayLabel,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(23, 20, 24, 36),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Senha Gerada', style: AppTextStyles.pageTitle),
-                const SizedBox(height: 18),
-                SectionCard(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
+            child: ticket == null
+                ? SectionCard(
+                    title: 'Nenhuma Senha Selecionada',
+                    children: [
+                      const Text(
+                        'Emita uma nova senha para visualizar o comprovante.',
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.bodyRegular,
                       ),
-                      decoration: BoxDecoration(
-                        color: AppColors.verdeClaro,
-                        borderRadius: BorderRadius.circular(99),
+                      FilaFacilButton(
+                        label: 'Voltar ao Menu Inicial',
+                        width: 260,
+                        onPressed: () => context.go('/home'),
                       ),
-                      child: Text(
-                        '✓ Agendamento Confirmado na Fila',
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.verdeSucesso,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 18,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.azulUbs,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Senha Gerada', style: AppTextStyles.pageTitle),
+                      const SizedBox(height: 18),
+                      SectionCard(
                         children: [
-                          Text(
-                            'SENHA DE ATENDIMENTO',
-                            style: AppTextStyles.caption.copyWith(
-                              color: AppColors.cinzaClaro,
-                              letterSpacing: 0.6,
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 6,
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            ticket.ticketCode,
-                            style: const TextStyle(
-                              fontFamily: AppTextStyles.fontFamily,
-                              fontSize: 38,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.branco,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${ticket.positionNumber}º da fila • Previsão: ~${ticket.scheduledTime}',
-                            style: AppTextStyles.caption.copyWith(
+                            decoration: BoxDecoration(
                               color: AppColors.verdeClaro,
-                              fontSize: 12,
+                              borderRadius: BorderRadius.circular(99),
                             ),
+                            child: Text(
+                              '✓ Senha Registrada na Fila SUS',
+                              style: AppTextStyles.caption.copyWith(
+                                color: AppColors.verdeSucesso,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 18,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.azulUbs,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  'SENHA DE ATENDIMENTO',
+                                  style: AppTextStyles.caption.copyWith(
+                                    color: AppColors.cinzaClaro,
+                                    letterSpacing: 0.6,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  ticket.ticketCode,
+                                  style: const TextStyle(
+                                    fontFamily: AppTextStyles.fontFamily,
+                                    fontSize: 38,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.branco,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${ticket.priority.shortLabel} • ${ticket.scheduledTime}',
+                                  style: AppTextStyles.caption.copyWith(
+                                    color: AppColors.verdeClaro,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          _TicketInfoRow(
+                            label: 'Paciente',
+                            value: ticket.patientName,
+                          ),
+                          if (ticket.cpf.isNotEmpty)
+                            _TicketInfoRow(label: 'CPF', value: ticket.cpf),
+                          if (ticket.susCard.isNotEmpty)
+                            _TicketInfoRow(
+                              label: 'Cartão SUS',
+                              value: ticket.susCard,
+                            ),
+                          _TicketInfoRow(
+                            label: 'Prioridade',
+                            value: ticket.priorityLabel,
+                          ),
+                          _TicketInfoRow(
+                            label: 'Especialidade',
+                            value: '${ticket.specialty} • ${ticket.room}',
+                          ),
+                          _TicketInfoRow(
+                            label: 'Unidade',
+                            value: ticket.ubsName,
+                          ),
+                          _TicketInfoRow(
+                            label: 'Emitido em',
+                            value:
+                                '${ticket.scheduledDate} às ${ticket.scheduledTime}',
+                          ),
+                          _TicketInfoRow(
+                            label: 'Protocolo',
+                            value: ticket.protocol,
+                          ),
+                          const SizedBox(height: 4),
+                          FilaFacilButton(
+                            label: 'Enviar via WhatsApp / SMS',
+                            variant: FilaFacilButtonVariant.success,
+                            width: 290,
+                            onPressed: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Comprovante ${ticket.ticketCode} pronto para envio a ${ticket.patientName}!',
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          FilaFacilButton(
+                            label: 'Voltar ao Menu Inicial',
+                            width: 290,
+                            onPressed: () => context.go('/home'),
                           ),
                         ],
                       ),
-                    ),
-                    _TicketInfoRow(
-                      label: 'Paciente',
-                      value: ticket.patientName,
-                    ),
-                    _TicketInfoRow(label: 'CPF', value: ticket.cpf),
-                    _TicketInfoRow(
-                      label: 'Especialidade',
-                      value: '${ticket.specialty} • ${ticket.room}',
-                    ),
-                    _TicketInfoRow(label: 'Unidade', value: ticket.ubsName),
-                    _TicketInfoRow(
-                      label: 'Data e Hora',
-                      value:
-                          '${ticket.scheduledDate} às ${ticket.scheduledTime}',
-                    ),
-                    _TicketInfoRow(
-                      label: 'Protocolo SUS',
-                      value: ticket.protocol,
-                    ),
-                    const SizedBox(height: 4),
-                    FilaFacilButton(
-                      label: 'Enviar via WhatsApp / SMS',
-                      variant: FilaFacilButtonVariant.success,
-                      width: 290,
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Comprovante ${ticket.ticketCode} enviado para ${ticket.patientName}!',
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    FilaFacilButton(
-                      label: 'Voltar ao Menu Inicial',
-                      width: 290,
-                      onPressed: () => context.go('/home'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                    ],
+                  ),
           ),
         ),
       ),
@@ -155,6 +188,7 @@ class _TicketInfoRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: AppTextStyles.bodyRegular),
+        const SizedBox(width: 8),
         Flexible(
           child: Text(
             value,
@@ -169,4 +203,3 @@ class _TicketInfoRow extends StatelessWidget {
     );
   }
 }
-

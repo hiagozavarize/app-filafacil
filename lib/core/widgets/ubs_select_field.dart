@@ -30,6 +30,15 @@ class UbsSelectField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveUnits = <String>[
+      if (selectedUbs.trim().isNotEmpty && !units.contains(selectedUbs))
+        selectedUbs,
+      ...units,
+    ];
+    final currentValue = effectiveUnits.contains(selectedUbs)
+        ? selectedUbs
+        : effectiveUnits.first;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -47,7 +56,7 @@ class UbsSelectField extends StatelessWidget {
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
-              value: units.contains(selectedUbs) ? selectedUbs : units.first,
+              value: currentValue,
               isExpanded: true,
               icon: const Icon(
                 Icons.keyboard_arrow_down_rounded,
@@ -56,7 +65,7 @@ class UbsSelectField extends StatelessWidget {
               style: AppTextStyles.bodyMedium,
               dropdownColor: AppColors.branco,
               borderRadius: BorderRadius.circular(12),
-              items: units
+              items: effectiveUnits
                   .map(
                     (unit) => DropdownMenuItem<String>(
                       value: unit,
@@ -76,4 +85,3 @@ class UbsSelectField extends StatelessWidget {
     );
   }
 }
-

@@ -13,207 +13,326 @@ import '../../domain/entities/queue_ticket.dart';
 import '../providers/queue_provider.dart';
 
 /// 08. `menu inicial - consultar fila` (Node `6:193` no Figma).
-class ConsultQueueScreen extends ConsumerWidget {
+/// Integrada a `/api/tickets/waiting`, `/api/tickets`, `/api/tickets/call-next`,
+/// `/api/tickets/{id}/call` e `/api/tickets/{id}/finish`.
+class ConsultQueueScreen extends ConsumerStatefulWidget {
   const ConsultQueueScreen({super.key});
 
+  @override
+  ConsumerState<ConsultQueueScreen> createState() => _ConsultQueueScreenState();
+}
+
+class _ConsultQueueScreenState extends ConsumerState<ConsultQueueScreen> {
   static const List<String> _filterPills = <String>[
     'Todos',
-    'Clínico',
-    'Pediatra',
-    'Dentista',
+    'Clínica',
+    'Pediatria',
+    'Odontologia',
   ];
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    Future<void>.microtask(() {
+      ref.read(queueProvider.notifier).loadQueue();
+    });
+  }
+
+  Future<void> _handleCallNext() async {
+    final agent = ref.read(authProvider).agent;
+    final rooms = ref.read(queueProvider).rooms;
+    final roomName = rooms.isNotEmpty ? rooms.first.name : 'Consultorio 01';
+
+    final called = await ref
+        .read(queueProvider.notifier)
+        .callNext(roomName: roomName, doctorName: agent.name);
+
+    if (!mounted) return;
+    if (called != null) {
+      context.push('/patient-call');
+    } else {
+      final error = ref.read(queueProvider).errorMessage;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Nenhum paciente aguardando na fila.'),
+          backgroundColor: AppColors.vermelho,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleCardAction(QueueTicket ticket) async {
+    final notifier = ref.read(queueProvider.notifier);
+    final agent = ref.read(authProvider).agent;
+
+    if (ticket.status == QueueStatus.inAttendance) {
+      final ok = await notifier.finishAttendance(ticketId: ticket.id);
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              ref.read(queueProvider).errorMessage ??
+                  'Erro ao finalizar atendimento.',
+            ),
+            backgroundColor: AppColors.vermelho,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (ticket.status == QueueStatus.called) {
+      notifier.selectTicketForCall(ticket);
+      context.push('/patient-call');
+      return;
+    }
+
+    final called = await notifier.callTicket(
+      ticketId: ticket.id,
+      roomName: ticket.room,
+      doctorName: agent.name,
+    );
+    if (!mounted) return;
+    if (called != null) {
+      context.push('/patient-call');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ref.read(queueProvider).errorMessage ??
+                'Erro ao chamar paciente no painel.',
+          ),
+          backgroundColor: AppColors.vermelho,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final agent = ref.watch(authProvider).agent;
     final queueState = ref.watch(queueProvider);
     final notifier = ref.read(queueProvider.notifier);
     final activeTickets = queueState.activeFilteredTickets;
 
     return Scaffold(
-      appBar: FilaFacilHeader(agentName: agent.name, agentRole: agent.role),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(23, 20, 24, 36),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Consultar Fila', style: AppTextStyles.pageTitle),
-                const SizedBox(height: 18),
-                // Card 1: Unidade e Especialidade
-                SectionCard(
-                  title: 'Unidade e Especialidade',
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    UbsSelectField(
-                      selectedUbs: queueState.selectedUbs,
-                      onChanged: notifier.setSelectedUbs,
-                    ),
-                    // Barra de busca
-                    Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.branco,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.azulClaro),
+      appBar: FilaFacilHeader(
+        agentName: agent.name,
+        agentRole: agent.roleDisplayLabel,
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => notifier.loadQueue(),
+        color: AppColors.azulUbs,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(23, 20, 24, 36),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Consultar Fila', style: AppTextStyles.pageTitle),
+                  const SizedBox(height: 18),
+                  // Card 1: Unidade e Especialidade
+                  SectionCard(
+                    title: 'Unidade e Especialidade',
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      UbsSelectField(
+                        selectedUbs: queueState.selectedUbs,
+                        onChanged: notifier.setSelectedUbs,
                       ),
-                      child: TextField(
-                        onChanged: notifier.setSearchQuery,
-                        style: AppTextStyles.bodyRegular,
-                        decoration: InputDecoration(
-                          prefixIcon: const Icon(
-                            Icons.search_rounded,
-                            color: AppColors.azulUbs,
-                            size: 20,
+                      Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.branco,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.azulClaro),
+                        ),
+                        child: TextField(
+                          onChanged: notifier.setSearchQuery,
+                          style: AppTextStyles.bodyRegular,
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(
+                              Icons.search_rounded,
+                              color: AppColors.azulUbs,
+                              size: 20,
+                            ),
+                            hintText: 'Buscar paciente, CPF ou senha...',
+                            hintStyle: AppTextStyles.bodyRegular.copyWith(
+                              color: AppColors.cinzaEscuro.withValues(
+                                alpha: 0.6,
+                              ),
+                            ),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 11,
+                            ),
+                            border: InputBorder.none,
                           ),
-                          hintText: 'Buscar paciente por nome ou CPF...',
-                          hintStyle: AppTextStyles.bodyRegular.copyWith(
-                            color: AppColors.cinzaEscuro.withValues(alpha: 0.6),
-                          ),
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 11,
-                          ),
-                          border: InputBorder.none,
                         ),
                       ),
-                    ),
-                    // Pílulas de especialidade
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: _filterPills.map((pill) {
-                          final isSelected =
-                              queueState.selectedSpecialty == pill;
-                          final label = pill == 'Todos'
-                              ? 'Todos (${queueState.waitingCount + queueState.inAttendanceCount})'
-                              : pill;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(99),
-                              onTap: () => notifier.setSelectedSpecialty(pill),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? AppColors.azulUbs
-                                      : AppColors.branco,
-                                  borderRadius: BorderRadius.circular(99),
-                                  border: Border.all(
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: _filterPills.map((pill) {
+                            final isSelected =
+                                queueState.selectedSpecialty == pill;
+                            final label = pill == 'Todos'
+                                ? 'Todos (${queueState.waitingCount + queueState.inAttendanceCount})'
+                                : pill;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(99),
+                                onTap: () =>
+                                    notifier.setSelectedSpecialty(pill),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
                                     color: isSelected
                                         ? AppColors.azulUbs
-                                        : AppColors.azulClaro,
+                                        : AppColors.branco,
+                                    borderRadius: BorderRadius.circular(99),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? AppColors.azulUbs
+                                          : AppColors.azulClaro,
+                                    ),
                                   ),
-                                ),
-                                child: Text(
-                                  label,
-                                  style: AppTextStyles.caption.copyWith(
-                                    color: isSelected
-                                        ? AppColors.branco
-                                        : AppColors.azulUbs,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.w500,
+                                  child: Text(
+                                    label,
+                                    style: AppTextStyles.caption.copyWith(
+                                      color: isSelected
+                                          ? AppColors.branco
+                                          : AppColors.azulUbs,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                    ),
                                   ),
                                 ),
                               ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  // Resumo rápido da fila (3 mini cards)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _QuickStatBadge(
+                          value: queueState.waitingCount.toString().padLeft(
+                            2,
+                            '0',
+                          ),
+                          label: 'Aguardando',
+                          valueColor: AppColors.azulUbs,
+                          bgColor: AppColors.cinzaClaro,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _QuickStatBadge(
+                          value: queueState.inAttendanceCount
+                              .toString()
+                              .padLeft(2, '0'),
+                          label: 'Atendendo',
+                          valueColor: AppColors.verdeSaude,
+                          bgColor: AppColors.verdeClaro,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _QuickStatBadge(
+                          value: queueState.rooms.isEmpty
+                              ? '--'
+                              : queueState.rooms
+                                    .where((r) => r.isAvailable)
+                                    .length
+                                    .toString()
+                                    .padLeft(2, '0'),
+                          label: 'Salas Livres',
+                          valueColor: AppColors.azulProfundo,
+                          bgColor: AppColors.cinzaClaro,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  // Card 2: Pacientes na Fila
+                  SectionCard(
+                    title: 'Pacientes na Fila (Ordem SUS)',
+                    children: [
+                      if (queueState.isLoading && activeTickets.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: CircularProgressIndicator(
+                            color: AppColors.azulUbs,
+                          ),
+                        )
+                      else if (queueState.errorMessage != null &&
+                          activeTickets.isEmpty)
+                        Column(
+                          children: [
+                            Text(
+                              queueState.errorMessage!,
+                              textAlign: TextAlign.center,
+                              style: AppTextStyles.bodyRegular.copyWith(
+                                color: AppColors.vermelho,
+                              ),
                             ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                // Resumo rápido da fila (3 mini cards)
-                Row(
-                  children: [
-                    Expanded(
-                      child: _QuickStatBadge(
-                        value: queueState.waitingCount.toString().padLeft(
-                          2,
-                          '0',
-                        ),
-                        label: 'Aguardando',
-                        valueColor: AppColors.azulUbs,
-                        bgColor: AppColors.cinzaClaro,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _QuickStatBadge(
-                        value: queueState.inAttendanceCount.toString().padLeft(
-                          2,
-                          '0',
-                        ),
-                        label: 'Atendendo',
-                        valueColor: AppColors.verdeSaude,
-                        bgColor: AppColors.verdeClaro,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: _QuickStatBadge(
-                        value: '18m',
-                        label: 'Espera Média',
-                        valueColor: AppColors.azulProfundo,
-                        bgColor: AppColors.cinzaClaro,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                // Card 2: Pacientes na Fila (`card paciente fila` instances)
-                SectionCard(
-                  title: 'Pacientes na Fila',
-                  children: [
-                    if (activeTickets.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Text(
-                          'Nenhum paciente aguardando para este filtro.',
-                          style: AppTextStyles.bodyRegular,
-                        ),
-                      )
-                    else
-                      ...activeTickets.map(
-                        (ticket) => _PatientQueueCard(
-                          ticket: ticket,
-                          onTapCard: () {
-                            notifier.selectTicketForCall(ticket);
-                            context.push('/patient-call');
-                          },
-                          onActionPressed: () {
-                            if (ticket.status == QueueStatus.inAttendance) {
-                              notifier.updateStatus(
-                                ticket.id,
-                                QueueStatus.completed,
-                              );
-                            } else {
+                            const SizedBox(height: 10),
+                            TextButton.icon(
+                              onPressed: () => notifier.loadQueue(),
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Tentar novamente'),
+                            ),
+                          ],
+                        )
+                      else if (activeTickets.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Text(
+                            'Nenhum paciente aguardando para este filtro.',
+                            style: AppTextStyles.bodyRegular,
+                          ),
+                        )
+                      else
+                        ...activeTickets.map(
+                          (ticket) => _PatientQueueCard(
+                            ticket: ticket,
+                            onTapCard: () {
                               notifier.selectTicketForCall(ticket);
-                              notifier.updateStatus(
-                                ticket.id,
-                                QueueStatus.inAttendance,
-                              );
                               context.push('/patient-call');
-                            }
-                          },
+                            },
+                            onActionPressed: () => _handleCardAction(ticket),
+                          ),
                         ),
+                      const SizedBox(height: 4),
+                      if (queueState.waitingCount > 0)
+                        FilaFacilButton(
+                          label: 'Chamar Próximo da Fila',
+                          variant: FilaFacilButtonVariant.success,
+                          isLoading: queueState.isActionLoading,
+                          onPressed: _handleCallNext,
+                        ),
+                      FilaFacilButton(
+                        label: 'Adicionar Paciente',
+                        onPressed: () => context.push('/add-to-queue'),
                       ),
-                    const SizedBox(height: 4),
-                    FilaFacilButton(
-                      label: 'Adicionar Paciente',
-                      onPressed: () => context.push('/add-to-queue'),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -278,16 +397,23 @@ class _PatientQueueCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isAttending = ticket.status == QueueStatus.inAttendance;
+    final isCalled = ticket.status == QueueStatus.called;
     final isNext = ticket.status == QueueStatus.next;
 
-    final statusBg = isAttending
+    final statusBg = (isAttending || isCalled)
         ? AppColors.verdeClaro
         : AppColors.cinzaClaro;
-    final statusFg = isAttending
+    final statusFg = (isAttending || isCalled)
         ? AppColors.verdeSaude
         : isNext
         ? AppColors.azulUbs
         : AppColors.azulProfundo;
+
+    final actionLabel = isAttending
+        ? 'Concluir'
+        : isCalled
+        ? 'Atender'
+        : 'Chamar';
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -321,7 +447,7 @@ class _PatientQueueCard extends StatelessWidget {
                           ticket.positionBadge,
                           style: const TextStyle(
                             fontFamily: AppTextStyles.fontFamily,
-                            fontSize: 13,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: AppColors.branco,
                           ),
@@ -362,15 +488,20 @@ class _PatientQueueCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '${ticket.specialty} • ${ticket.room}',
-                  style: AppTextStyles.caption.copyWith(
-                    color: AppColors.azulUbs,
-                    fontSize: 12,
+                Flexible(
+                  child: Text(
+                    '${ticket.specialty} • ${ticket.room}',
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.caption.copyWith(
+                      color: AppColors.azulUbs,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
                 Text(
-                  '${ticket.scheduledTime} • CPF ${ticket.cpf}',
+                  ticket.cpf.isNotEmpty
+                      ? '${ticket.scheduledTime} • ${ticket.cpf}'
+                      : ticket.scheduledTime,
                   style: AppTextStyles.caption.copyWith(
                     fontWeight: FontWeight.w400,
                   ),
@@ -404,7 +535,7 @@ class _PatientQueueCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      isAttending ? 'Concluir' : 'Chamar',
+                      actionLabel,
                       style: AppTextStyles.caption.copyWith(
                         color: AppColors.branco,
                         fontWeight: FontWeight.w600,
@@ -420,4 +551,3 @@ class _PatientQueueCard extends StatelessWidget {
     );
   }
 }
-

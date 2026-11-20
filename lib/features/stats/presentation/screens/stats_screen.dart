@@ -8,9 +8,13 @@ import '../../../../core/widgets/filafacil_header.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../../core/widgets/ubs_select_field.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../queue/domain/entities/queue_ticket.dart';
 import '../../../queue/presentation/providers/queue_provider.dart';
+import '../../domain/entities/dashboard_stats.dart';
+import '../providers/stats_provider.dart';
 
 /// 10. `menu inicial - estatísticas` (Node `6:308` no Figma).
+/// Integrada a `/api/stats/dashboard`, `/api/stats/reports` e `/api/stats/export`.
 class StatsScreen extends ConsumerStatefulWidget {
   const StatsScreen({super.key});
 
@@ -19,218 +23,328 @@ class StatsScreen extends ConsumerStatefulWidget {
 }
 
 class _StatsScreenState extends ConsumerState<StatsScreen> {
-  String _selectedPeriod = 'Últimos 7 dias';
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.microtask(() {
+      ref.read(statsProvider.notifier).loadStats();
+    });
+  }
 
-  static const List<String> _periods = <String>[
-    'Hoje',
-    'Últimos 7 dias',
-    'Novembro 2026',
-  ];
+  Future<void> _handleExport() async {
+    final csv = await ref.read(statsProvider.notifier).exportCsv();
+    if (!mounted) return;
+    if (csv != null) {
+      final lineCount = csv
+          .split('\n')
+          .where((l) => l.trim().isNotEmpty)
+          .length;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Relatório CSV gerado pela API ($lineCount linha(s) exportadas)!',
+          ),
+          backgroundColor: AppColors.verdeSaude,
+        ),
+      );
+    } else {
+      final error = ref.read(statsProvider).errorMessage;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Não foi possível exportar o relatório.'),
+          backgroundColor: AppColors.vermelho,
+        ),
+      );
+    }
+  }
+
+  List<SpecialtyMetric> _buildBreakdown(DashboardStats stats) {
+    if (stats.bySpecialty.isNotEmpty) return stats.bySpecialty;
+    if (stats.byPriority.isEmpty) return const <SpecialtyMetric>[];
+    final total = stats.byPriority.values.fold<int>(0, (a, b) => a + b);
+    final entries = stats.byPriority.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return entries.map((e) {
+      final priority = TicketPriority.fromApi(e.key);
+      return SpecialtyMetric(
+        name: priority.shortLabel,
+        count: e.value,
+        fraction: total > 0 ? e.value / total : 0,
+      );
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
     final agent = ref.watch(authProvider).agent;
     final queueState = ref.watch(queueProvider);
-    final notifier = ref.read(queueProvider.notifier);
+    final queueNotifier = ref.read(queueProvider.notifier);
+    final statsState = ref.watch(statsProvider);
+    final statsNotifier = ref.read(statsProvider.notifier);
+    final stats = statsState.stats;
+
+    final breakdown = _buildBreakdown(stats);
+    const barColors = <Color>[
+      AppColors.azulUbs,
+      AppColors.azulClaro,
+      AppColors.verdeSaude,
+      AppColors.azulProfundo,
+    ];
+
+    final maxHourly = stats.hourlyFlow.isEmpty
+        ? 1
+        : stats.hourlyFlow
+              .map((p) => p.count)
+              .reduce((a, b) => a > b ? a : b)
+              .clamp(1, 999999);
 
     return Scaffold(
-      appBar: FilaFacilHeader(agentName: agent.name, agentRole: agent.role),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(23, 20, 24, 36),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Estatísticas', style: AppTextStyles.pageTitle),
-                const SizedBox(height: 18),
-                // Card 1: Visão Geral da Unidade + KPIs
-                SectionCard(
-                  title: 'Visão Geral da Unidade',
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    UbsSelectField(
-                      selectedUbs: queueState.selectedUbs,
-                      onChanged: notifier.setSelectedUbs,
-                    ),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: _periods.map((period) {
-                          final isSelected = period == _selectedPeriod;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(99),
-                              onTap: () =>
-                                  setState(() => _selectedPeriod = period),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? AppColors.azulUbs
-                                      : AppColors.branco,
-                                  borderRadius: BorderRadius.circular(99),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? AppColors.azulUbs
-                                        : AppColors.azulClaro,
-                                  ),
-                                ),
-                                child: Text(
-                                  period,
-                                  style: AppTextStyles.caption.copyWith(
-                                    color: isSelected
-                                        ? AppColors.branco
-                                        : AppColors.azulUbs,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                    // Grid 2x2 de `card metrica`
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: _KpiMetricCard(
-                            title: 'Total Atendidos',
-                            value: '148',
-                            subtitle: '+12% vs semana ant.',
-                            valueColor: AppColors.azulUbs,
-                            subtitleColor: AppColors.verdeSucesso,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _KpiMetricCard(
-                            title: 'Na Fila Agora',
-                            value: '${queueState.waitingCount + queueState.inAttendanceCount}',
-                            subtitle:
-                                '${queueState.inAttendanceCount} em atendimento',
-                            valueColor: AppColors.azulProfundo,
-                            subtitleColor: AppColors.azulUbs,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Row(
-                      children: [
-                        Expanded(
-                          child: _KpiMetricCard(
-                            title: 'Espera Média',
-                            value: '18 min',
-                            subtitle: 'Meta: < 25 min',
-                            valueColor: AppColors.verdeSaude,
-                            subtitleColor: AppColors.verdeSucesso,
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: _KpiMetricCard(
-                            title: 'Taxa Ausência',
-                            value: '6,4%',
-                            subtitle: '9 não compareceram',
-                            valueColor: AppColors.vermelho,
-                            subtitleColor: AppColors.vermelho,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                // Card 2: Por Especialidade
-                const SectionCard(
-                  title: 'Por Especialidade',
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _SpecialtyProgressBar(
-                      name: 'Clínico Geral',
-                      countLabel: '62 atend. (42%)',
-                      fraction: 0.42,
-                      color: AppColors.azulUbs,
-                    ),
-                    _SpecialtyProgressBar(
-                      name: 'Pediatra',
-                      countLabel: '36 atend. (24%)',
-                      fraction: 0.24,
-                      color: AppColors.azulClaro,
-                    ),
-                    _SpecialtyProgressBar(
-                      name: 'Dentista',
-                      countLabel: '30 atend. (20%)',
-                      fraction: 0.20,
-                      color: AppColors.verdeSaude,
-                    ),
-                    _SpecialtyProgressBar(
-                      name: 'Ginecologista',
-                      countLabel: '20 atend. (14%)',
-                      fraction: 0.14,
-                      color: AppColors.azulProfundo,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                // Card 3: Fluxo por Horário
-                SectionCard(
-                  title: 'Fluxo por Horário',
-                  children: [
+      appBar: FilaFacilHeader(
+        agentName: agent.name,
+        agentRole: agent.roleDisplayLabel,
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => statsNotifier.loadStats(),
+        color: AppColors.azulUbs,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(23, 20, 24, 36),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Estatísticas', style: AppTextStyles.pageTitle),
+                  const SizedBox(height: 18),
+                  if (statsState.errorMessage != null) ...[
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
-                      decoration: BoxDecoration(
-                        color: AppColors.branco,
-                        borderRadius: BorderRadius.circular(14),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
                       ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                      decoration: BoxDecoration(
+                        color: AppColors.vermelho.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.vermelho.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Row(
                         children: [
-                          _HourlyBar(hour: '07h', count: 18, height: 48),
-                          _HourlyBar(
-                            hour: '08h',
-                            count: 34,
-                            height: 92,
-                            isPeak: true,
+                          const Icon(
+                            Icons.error_outline_rounded,
+                            color: AppColors.vermelho,
+                            size: 20,
                           ),
-                          _HourlyBar(
-                            hour: '09h',
-                            count: 31,
-                            height: 84,
-                            isPeak: true,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              statsState.errorMessage!,
+                              style: AppTextStyles.caption.copyWith(
+                                color: AppColors.vermelho,
+                              ),
+                            ),
                           ),
-                          _HourlyBar(hour: '10h', count: 22, height: 60),
-                          _HourlyBar(hour: '11h', count: 14, height: 38),
-                          _HourlyBar(hour: '14h', count: 19, height: 52),
-                          _HourlyBar(hour: '15h', count: 10, height: 28),
+                          TextButton(
+                            onPressed: () => statsNotifier.loadStats(),
+                            child: const Text('Tentar'),
+                          ),
                         ],
                       ),
                     ),
-                    FilaFacilButton(
-                      label: 'Exportar Relatório',
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Relatório de ${queueState.selectedUbs} ($_selectedPeriod) exportado com sucesso!',
+                    const SizedBox(height: 14),
+                  ],
+                  // Card 1: Visão Geral da Unidade + KPIs
+                  SectionCard(
+                    title: 'Visão Geral da Unidade',
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      UbsSelectField(
+                        selectedUbs: queueState.selectedUbs,
+                        onChanged: queueNotifier.setSelectedUbs,
+                      ),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: StatsPeriod.values.map((period) {
+                            final isSelected = period == statsState.period;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(99),
+                                onTap: () =>
+                                    statsNotifier.loadStats(period: period),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? AppColors.azulUbs
+                                        : AppColors.branco,
+                                    borderRadius: BorderRadius.circular(99),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? AppColors.azulUbs
+                                          : AppColors.azulClaro,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    period.label,
+                                    style: AppTextStyles.caption.copyWith(
+                                      color: isSelected
+                                          ? AppColors.branco
+                                          : AppColors.azulUbs,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      if (statsState.isLoading)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.azulUbs,
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ],
+                        )
+                      else ...[
+                        // Grid 2x2 de `card metrica`
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _KpiMetricCard(
+                                title: 'Total Atendidos',
+                                value: '${stats.finishedCount}',
+                                subtitle:
+                                    'Meta SUS: ${stats.withinSusGoalPercentage.toStringAsFixed(1)}%',
+                                valueColor: AppColors.azulUbs,
+                                subtitleColor: AppColors.verdeSucesso,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _KpiMetricCard(
+                                title: 'Na Fila Agora',
+                                value: '${stats.activeNowCount}',
+                                subtitle:
+                                    '${stats.inProgressCount} em atendimento',
+                                valueColor: AppColors.azulProfundo,
+                                subtitleColor: AppColors.azulUbs,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _KpiMetricCard(
+                                title: 'Espera Média',
+                                value:
+                                    '${stats.averageWaitTimeMinutes.toStringAsFixed(0)} min',
+                                subtitle: 'Meta SUS: ≤ 20 min',
+                                valueColor: AppColors.verdeSaude,
+                                subtitleColor: AppColors.verdeSucesso,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _KpiMetricCard(
+                                title: 'Taxa Ausência',
+                                value:
+                                    '${stats.absenceRatePercentage.toStringAsFixed(1).replaceAll('.', ',')}%',
+                                subtitle:
+                                    '${stats.absentCount} não compareceram',
+                                valueColor: AppColors.vermelho,
+                                subtitleColor: AppColors.vermelho,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  // Card 2: Por Especialidade ou Prioridade
+                  SectionCard(
+                    title: stats.bySpecialty.isNotEmpty
+                        ? 'Por Especialidade'
+                        : 'Por Prioridade SUS',
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: breakdown.isEmpty
+                        ? [
+                            Text(
+                              'Sem dados distribuídos para o período selecionado.',
+                              style: AppTextStyles.bodyRegular,
+                            ),
+                          ]
+                        : breakdown.asMap().entries.map((entry) {
+                            final item = entry.value;
+                            final pct = (item.fraction * 100).round();
+                            return _SpecialtyProgressBar(
+                              name: item.name,
+                              countLabel: '${item.count} atend. ($pct%)',
+                              fraction: item.fraction.clamp(0.0, 1.0),
+                              color: barColors[entry.key % barColors.length],
+                            );
+                          }).toList(),
+                  ),
+                  const SizedBox(height: 18),
+                  // Card 3: Fluxo por Horário + Exportação
+                  SectionCard(
+                    title: 'Fluxo por Horário',
+                    children: [
+                      if (stats.hourlyFlow.isNotEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+                          decoration: BoxDecoration(
+                            color: AppColors.branco,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: stats.hourlyFlow.take(7).map((point) {
+                              final barHeight =
+                                  16.0 + (point.count / maxHourly) * 76.0;
+                              final isPeak = point.count >= maxHourly * 0.85;
+                              return _HourlyBar(
+                                hour: point.hour,
+                                count: point.count,
+                                height: barHeight,
+                                isPeak: isPeak,
+                              );
+                            }).toList(),
+                          ),
+                        )
+                      else
+                        Text(
+                          'O fluxo por horário será exibido conforme novos atendimentos forem registrados.',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.bodyRegular.copyWith(
+                            fontSize: 13,
+                          ),
+                        ),
+                      FilaFacilButton(
+                        label: 'Exportar Relatório (CSV)',
+                        isLoading: statsState.isExporting,
+                        onPressed: _handleExport,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -382,4 +496,3 @@ class _HourlyBar extends StatelessWidget {
     );
   }
 }
-

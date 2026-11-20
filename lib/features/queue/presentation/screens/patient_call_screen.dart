@@ -12,144 +12,338 @@ import '../../domain/entities/queue_ticket.dart';
 import '../providers/queue_provider.dart';
 
 /// 09. `menu inicial - atendimento do paciente` (Node `11:479` no Figma).
-class PatientCallScreen extends ConsumerWidget {
+/// Integrada a `/api/tickets/{id}/call`, `/start`, `/recall`, `/finish` e `/absent`.
+class PatientCallScreen extends ConsumerStatefulWidget {
   const PatientCallScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PatientCallScreen> createState() => _PatientCallScreenState();
+}
+
+class _PatientCallScreenState extends ConsumerState<PatientCallScreen> {
+  void _showFeedback(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppColors.vermelho : AppColors.verdeSaude,
+      ),
+    );
+  }
+
+  Future<void> _handleFinishDialog(QueueTicket ticket) async {
+    final cidController = TextEditingController(text: ticket.cid10 ?? '');
+    final notesController = TextEditingController(text: ticket.triageNotes);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: const Text(
+            'Finalizar Atendimento',
+            style: AppTextStyles.sectionTitle,
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: cidController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  labelText: 'CID-10 (opcional)',
+                  hintText: 'Ex: I10',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: notesController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'Anotações do atendimento',
+                  hintText: 'Paciente medicado e orientado...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.verdeSaude,
+                foregroundColor: AppColors.branco,
+              ),
+              child: const Text('Concluir'),
+            ),
+          ],
+        );
+      },
+    );
+
+    final cid10 = cidController.text.trim();
+    final notes = notesController.text.trim();
+    cidController.dispose();
+    notesController.dispose();
+
+    if (confirmed != true || !mounted) return;
+
+    final ok = await ref
+        .read(queueProvider.notifier)
+        .finishAttendance(
+          ticketId: ticket.id,
+          cid10: cid10.isEmpty ? null : cid10,
+          notes: notes.isEmpty ? null : notes,
+        );
+
+    if (!mounted) return;
+    if (ok) {
+      _showFeedback('Atendimento de ${ticket.patientName} finalizado!');
+      context.pop();
+    } else {
+      _showFeedback(
+        ref.read(queueProvider).errorMessage ??
+            'Erro ao finalizar atendimento.',
+        isError: true,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final agent = ref.watch(authProvider).agent;
     final queueState = ref.watch(queueProvider);
     final ticket =
-        queueState.selectedCallTicket ?? queueState.tickets.first;
+        queueState.selectedCallTicket ??
+        (queueState.tickets.isNotEmpty ? queueState.tickets.first : null);
     final notifier = ref.read(queueProvider.notifier);
 
     return Scaffold(
-      appBar: FilaFacilHeader(agentName: agent.name, agentRole: agent.role),
+      appBar: FilaFacilHeader(
+        agentName: agent.name,
+        agentRole: agent.roleDisplayLabel,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(23, 20, 24, 36),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Chamar Paciente', style: AppTextStyles.pageTitle),
-                const SizedBox(height: 18),
-                SectionCard(
-                  children: [
-                    // Banner Painel da TV da UBS
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 16,
+            child: ticket == null
+                ? SectionCard(
+                    title: 'Nenhum Paciente Selecionado',
+                    children: [
+                      const Text(
+                        'Selecione uma senha na fila para gerenciar o atendimento.',
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.bodyRegular,
                       ),
-                      decoration: BoxDecoration(
-                        color: AppColors.azulProfundo,
-                        borderRadius: BorderRadius.circular(16),
+                      FilaFacilButton(
+                        label: 'Voltar para a Fila',
+                        onPressed: () => context.pop(),
                       ),
-                      child: Column(
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Atendimento do Paciente',
+                        style: AppTextStyles.pageTitle,
+                      ),
+                      const SizedBox(height: 18),
+                      SectionCard(
                         children: [
-                          Text(
-                            'CHAMANDO NO PAINEL DA UBS',
-                            style: AppTextStyles.caption.copyWith(
-                              color: AppColors.azulClaro,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.5,
+                          // Banner Painel da TV da UBS
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.azulProfundo,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  ticket.status == QueueStatus.inAttendance
+                                      ? 'EM ATENDIMENTO NO CONSULTÓRIO'
+                                      : ticket.status == QueueStatus.called
+                                      ? 'CHAMANDO NO PAINEL DA UBS'
+                                      : 'AGUARDANDO CHAMADA NO PAINEL',
+                                  style: AppTextStyles.caption.copyWith(
+                                    color: AppColors.azulClaro,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${ticket.positionBadge} • ${ticket.room}',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontFamily: AppTextStyles.fontFamily,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.branco,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Status: ${ticket.status.label} • Emitido às ${ticket.scheduledTime}',
+                                  style: AppTextStyles.caption.copyWith(
+                                    color: AppColors.verdeClaro,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${ticket.positionBadge} • ${ticket.room}',
-                            style: const TextStyle(
-                              fontFamily: AppTextStyles.fontFamily,
-                              fontSize: 30,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.branco,
+                          const Center(
+                            child: Text(
+                              'Ficha do Paciente',
+                              style: AppTextStyles.sectionTitle,
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Tempo em atendimento: 04m 12s',
-                            style: AppTextStyles.caption.copyWith(
-                              color: AppColors.verdeClaro,
-                              fontSize: 12,
+                          _FichaRow(label: 'Nome:', value: ticket.patientName),
+                          if (ticket.cpf.isNotEmpty)
+                            _FichaRow(
+                              label: ticket.age > 0 ? 'Idade / CPF:' : 'CPF:',
+                              value: ticket.age > 0
+                                  ? '${ticket.age} anos • ${ticket.cpf}'
+                                  : ticket.cpf,
                             ),
+                          if (ticket.susCard.isNotEmpty)
+                            _FichaRow(
+                              label: 'Cartão SUS:',
+                              value: ticket.susCard,
+                            ),
+                          _FichaRow(
+                            label: 'Prioridade Legal:',
+                            value: ticket.priorityLabel,
+                          ),
+                          _FichaRow(
+                            label: 'Especialidade:',
+                            value: '${ticket.specialty} • ${ticket.doctorName}',
+                          ),
+                          _FichaRow(
+                            label: 'Triagem / Notas:',
+                            value: ticket.triageNotes,
+                          ),
+                          const SizedBox(height: 4),
+                          if (ticket.status == QueueStatus.waiting ||
+                              ticket.status == QueueStatus.next)
+                            FilaFacilButton(
+                              label: 'Chamar no Painel da TV',
+                              width: 290,
+                              isLoading: queueState.isActionLoading,
+                              onPressed: () async {
+                                final called = await notifier.callTicket(
+                                  ticketId: ticket.id,
+                                  roomName: ticket.room,
+                                  doctorName: agent.name,
+                                );
+                                if (called != null) {
+                                  _showFeedback(
+                                    '${ticket.patientName} chamado(a) na ${ticket.room}!',
+                                  );
+                                } else {
+                                  _showFeedback(
+                                    ref.read(queueProvider).errorMessage ??
+                                        'Erro ao chamar senha.',
+                                    isError: true,
+                                  );
+                                }
+                              },
+                            ),
+                          if (ticket.status == QueueStatus.called)
+                            FilaFacilButton(
+                              label: 'Iniciar Atendimento',
+                              variant: FilaFacilButtonVariant.success,
+                              width: 290,
+                              isLoading: queueState.isActionLoading,
+                              onPressed: () async {
+                                final ok = await notifier.startAttendance(
+                                  ticket.id,
+                                );
+                                if (ok) {
+                                  _showFeedback(
+                                    'Atendimento iniciado em ${ticket.room}!',
+                                  );
+                                } else {
+                                  _showFeedback(
+                                    ref.read(queueProvider).errorMessage ??
+                                        'Erro ao iniciar atendimento.',
+                                    isError: true,
+                                  );
+                                }
+                              },
+                            ),
+                          FilaFacilButton(
+                            label: 'Concluir Atendimento',
+                            variant: FilaFacilButtonVariant.success,
+                            width: 290,
+                            isLoading: queueState.isActionLoading,
+                            onPressed: () => _handleFinishDialog(ticket),
+                          ),
+                          FilaFacilButton(
+                            label: 'Chamar Novamente no Painel',
+                            width: 290,
+                            isLoading: queueState.isActionLoading,
+                            onPressed: () async {
+                              final ok = await notifier.recallTicket(ticket.id);
+                              if (ok) {
+                                _showFeedback(
+                                  'Rechamada enviada para ${ticket.patientName} (${ticket.positionBadge}) na ${ticket.room}!',
+                                );
+                              } else {
+                                _showFeedback(
+                                  ref.read(queueProvider).errorMessage ??
+                                      'Erro ao rechamar no painel.',
+                                  isError: true,
+                                );
+                              }
+                            },
+                          ),
+                          FilaFacilButton(
+                            label: 'Marcar como Não Compareceu',
+                            variant: FilaFacilButtonVariant.dangerOutline,
+                            width: 290,
+                            height: 44,
+                            isLoading: queueState.isActionLoading,
+                            onPressed: () async {
+                              final ok = await notifier.markAbsent(ticket.id);
+                              if (!context.mounted) return;
+                              if (ok) {
+                                _showFeedback(
+                                  'Paciente marcado como ausente.',
+                                );
+                                context.pop();
+                              } else {
+                                _showFeedback(
+                                  ref.read(queueProvider).errorMessage ??
+                                      'Erro ao marcar ausência.',
+                                  isError: true,
+                                );
+                              }
+                            },
                           ),
                         ],
                       ),
-                    ),
-                    const Center(
-                      child: Text(
-                        'Ficha do Paciente',
-                        style: AppTextStyles.sectionTitle,
-                      ),
-                    ),
-                    _FichaRow(label: 'Nome:', value: ticket.patientName),
-                    _FichaRow(
-                      label: 'Idade / CPF:',
-                      value: '${ticket.age} anos • ${ticket.cpf}',
-                    ),
-                    _FichaRow(label: 'Cartão SUS:', value: ticket.susCard),
-                    _FichaRow(
-                      label: 'Prioridade Legal:',
-                      value: ticket.priorityLabel,
-                    ),
-                    _FichaRow(
-                      label: 'Especialidade:',
-                      value: '${ticket.specialty} • ${ticket.doctorName}',
-                    ),
-                    _FichaRow(
-                      label: 'Triagem / Notas:',
-                      value: ticket.triageNotes,
-                    ),
-                    const SizedBox(height: 4),
-                    FilaFacilButton(
-                      label: 'Concluir Atendimento',
-                      variant: FilaFacilButtonVariant.success,
-                      width: 290,
-                      onPressed: () async {
-                        await notifier.updateStatus(
-                          ticket.id,
-                          QueueStatus.completed,
-                        );
-                        if (context.mounted) {
-                          context.pop();
-                        }
-                      },
-                    ),
-                    FilaFacilButton(
-                      label: 'Chamar Novamente no Painel',
-                      width: 290,
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Chamando ${ticket.patientName} (${ticket.positionBadge}) novamente no painel da ${ticket.room}!',
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    FilaFacilButton(
-                      label: 'Marcar como Não Compareceu',
-                      variant: FilaFacilButtonVariant.dangerOutline,
-                      width: 290,
-                      height: 44,
-                      onPressed: () async {
-                        await notifier.updateStatus(
-                          ticket.id,
-                          QueueStatus.absent,
-                        );
-                        if (context.mounted) {
-                          context.pop();
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                    ],
+                  ),
           ),
         ),
       ),
@@ -184,4 +378,3 @@ class _FichaRow extends StatelessWidget {
     );
   }
 }
-
