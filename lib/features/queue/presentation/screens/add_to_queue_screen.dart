@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/input_formatters.dart';
 import '../../../../core/widgets/filafacil_button.dart';
 import '../../../../core/widgets/filafacil_header.dart';
 import '../../../../core/widgets/filafacil_text_field.dart';
@@ -32,6 +33,7 @@ class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
   final _birthController = TextEditingController();
   final _notesController = TextEditingController();
 
+  String? _selectedPatientId;
   String _selectedSpecialty = 'Clínica Geral';
   TicketPriority _selectedPriority = TicketPriority.normal;
   int _selectedDay = DateTime.now().day.clamp(1, 28);
@@ -101,12 +103,14 @@ class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
 
   void _applyPatientFromCadsus(Patient patient) {
     setState(() {
+      _selectedPatientId = patient.id.isNotEmpty ? patient.id : null;
       _nameController.text = patient.name;
-      _cpfController.text = patient.cpf;
-      _susCardController.text = patient.cartaoSus;
-      _birthController.text = patient.birthDate;
+      _cpfController.text = formatCpf(patient.cpf);
+      _susCardController.text = formatSusCard(patient.cartaoSus);
+      _birthController.text = formatBirthDateToBr(patient.birthDate);
       _selectedPriority = TicketPriority.fromApi(patient.priorityGroup);
-      if (patient.conditions.isNotEmpty && _notesController.text.trim().isEmpty) {
+      if (patient.conditions.isNotEmpty &&
+          _notesController.text.trim().isEmpty) {
         _notesController.text =
             'Condições CADSUS: ${patient.conditions.join(', ')}';
       }
@@ -120,6 +124,28 @@ class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Informe o nome completo do paciente.'),
+          backgroundColor: AppColors.vermelho,
+        ),
+      );
+      return;
+    }
+
+    final cpfDigits = digitsOnly(_cpfController.text);
+    if (cpfDigits.isNotEmpty && cpfDigits.length != 11) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('CPF incompleto. Informe os 11 dígitos (000.000.000-00).'),
+          backgroundColor: AppColors.vermelho,
+        ),
+      );
+      return;
+    }
+
+    final rawBirth = _birthController.text.trim();
+    if (rawBirth.isNotEmpty && formatBirthDateToIso(rawBirth) == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Data de nascimento inválida. Use o formato dd/mm/aaaa.'),
           backgroundColor: AppColors.vermelho,
         ),
       );
@@ -143,17 +169,21 @@ class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
     ];
     final dateLabel =
         '${_selectedDay.toString().padLeft(2, '0')} ${months[now.month - 1]} ${now.year}';
+    final scheduledDateIso =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${_selectedDay.toString().padLeft(2, '0')}';
 
     final created = await ref
         .read(queueProvider.notifier)
         .addPatientToQueue(
+          patientId: _selectedPatientId,
           patientName: _nameController.text,
           cpf: _cpfController.text,
           susCard: _susCardController.text,
-          birthDate: _birthController.text,
+          birthDate: rawBirth,
           specialty: _selectedSpecialty,
           ubsName: _selectedUbs,
           scheduledDate: dateLabel,
+          scheduledDateIso: scheduledDateIso,
           scheduledTime: _selectedTime,
           priority: _selectedPriority,
           notes: _notesController.text,
@@ -300,18 +330,21 @@ class _AddToQueueScreenState extends ConsumerState<AddToQueueScreen> {
                       hintText: 'ex: 000.000.000-00',
                       controller: _cpfController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: const [CpfInputFormatter()],
                     ),
                     FormQuestionField(
                       label: 'Cartão SUS (CNS)',
-                      hintText: 'ex: 892441029810001',
+                      hintText: 'ex: 892 4410 2981 0001',
                       controller: _susCardController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: const [SusCardInputFormatter()],
                     ),
                     FormQuestionField(
                       label: 'Data de Nascimento',
                       hintText: 'ex: dd/mm/aaaa',
                       controller: _birthController,
-                      keyboardType: TextInputType.datetime,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: const [DateBrInputFormatter()],
                     ),
                     FormQuestionField(
                       label: 'Observações / Triagem',

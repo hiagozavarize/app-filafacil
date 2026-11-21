@@ -120,8 +120,10 @@ class RemoteQueueRepository implements IQueueRepository {
       ApiEndpoints.callNextTicket,
       data: <String, dynamic>{
         'roomName': roomName,
-        if (doctorName != null && doctorName.trim().isNotEmpty)
+        if (doctorName != null && doctorName.trim().isNotEmpty) ...{
+          'professionalName': doctorName.trim(),
           'doctorName': doctorName.trim(),
+        },
       },
     );
     return _parseTicketResponse(response);
@@ -137,8 +139,10 @@ class RemoteQueueRepository implements IQueueRepository {
       ApiEndpoints.callTicket(ticketId),
       data: <String, dynamic>{
         'roomName': roomName,
-        if (doctorName != null && doctorName.trim().isNotEmpty)
+        if (doctorName != null && doctorName.trim().isNotEmpty) ...{
+          'professionalName': doctorName.trim(),
           'doctorName': doctorName.trim(),
+        },
       },
     );
     return _parseTicketResponse(response);
@@ -166,7 +170,10 @@ class RemoteQueueRepository implements IQueueRepository {
       ApiEndpoints.finishTicket(ticketId),
       data: <String, dynamic>{
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
-        if (cid10 != null && cid10.trim().isNotEmpty) 'cid10': cid10.trim(),
+        if (cid10 != null && cid10.trim().isNotEmpty) ...{
+          'cid': cid10.trim(),
+          'cid10': cid10.trim(),
+        },
       },
     );
     return _parseTicketResponse(response);

@@ -74,41 +74,55 @@ class FilaFacilHeader extends StatelessWidget implements PreferredSizeWidget {
                 )
               else
                 const FilaFacilLogo(fontSize: 20, badgeFontSize: 10),
-              InkWell(
-                borderRadius: BorderRadius.circular(10),
-                onTap: onProfileTap ?? () => context.push('/profile'),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: onProfileTap ?? () => context.push('/profile'),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          agentName,
-                          style: const TextStyle(
-                            fontFamily: AppTextStyles.fontFamily,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.branco,
-                            height: 1.15,
+                        Flexible(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                agentName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                softWrap: false,
+                                style: const TextStyle(
+                                  fontFamily: AppTextStyles.fontFamily,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppColors.branco,
+                                  height: 1.15,
+                                ),
+                              ),
+                              Text(
+                                agentRole,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                softWrap: false,
+                                style: const TextStyle(
+                                  fontFamily: AppTextStyles.fontFamily,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w300,
+                                  color: AppColors.branco,
+                                  height: 1.15,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        Text(
-                          agentRole,
-                          style: const TextStyle(
-                            fontFamily: AppTextStyles.fontFamily,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w300,
-                            color: AppColors.branco,
-                            height: 1.15,
-                          ),
-                        ),
+                        const SizedBox(width: 10),
+                        SvgPicture.string(_perfilSvg, width: 40, height: 40),
                       ],
                     ),
-                    const SizedBox(width: 10),
-                    SvgPicture.string(_perfilSvg, width: 40, height: 40),
-                  ],
+                  ),
                 ),
               ),
             ],

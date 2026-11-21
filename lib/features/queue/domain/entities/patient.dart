@@ -28,17 +28,29 @@ class Patient extends Equatable {
     final rawConditions = json['conditions'];
     final conditionsList = rawConditions is List
         ? rawConditions.map((e) => e.toString()).toList()
-        : const <String>[];
+        : <String>[
+            if ((json['specialCondition'] as String?)?.trim().isNotEmpty ==
+                true)
+              (json['specialCondition'] as String).trim(),
+          ];
+
+    final priorityGroup =
+        (json['priorityGroup'] as String?) ??
+        (json['specialCondition'] as String?) ??
+        (json['priorityLabel'] as String?) ??
+        (json['priority'] as String?) ??
+        'NORMAL';
 
     return Patient(
       id: (json['id'] ?? '').toString(),
       name: (json['name'] as String? ?? '').trim(),
       cpf: json['cpf'] as String? ?? '',
-      cartaoSus: json['cartaoSus'] as String? ?? '',
+      cartaoSus:
+          (json['cartaoSus'] as String?) ?? (json['susCard'] as String?) ?? '',
       birthDate: json['birthDate'] as String? ?? '',
       phone: json['phone'] as String? ?? '',
       gender: json['gender'] as String? ?? '',
-      priorityGroup: json['priorityGroup'] as String? ?? 'NORMAL',
+      priorityGroup: priorityGroup,
       conditions: conditionsList,
     );
   }
@@ -48,6 +60,7 @@ class Patient extends Equatable {
       'name': name,
       if (cpf.isNotEmpty) 'cpf': cpf,
       if (cartaoSus.isNotEmpty) 'cartaoSus': cartaoSus,
+      if (cartaoSus.isNotEmpty) 'susCard': cartaoSus,
       if (birthDate.isNotEmpty) 'birthDate': birthDate,
       if (phone.isNotEmpty) 'phone': phone,
       if (gender.isNotEmpty) 'gender': gender,
@@ -69,4 +82,3 @@ class Patient extends Equatable {
     conditions,
   ];
 }
-

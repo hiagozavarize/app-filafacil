@@ -39,6 +39,7 @@ class HealthAgent extends Equatable {
   /// Rótulo amigável do cargo vindo da API (`MEDICO`, `RECEPCAO`, `ENFERMEIRO`, `COORDENADORA`).
   String get roleDisplayLabel {
     return switch (role.toUpperCase()) {
+      'ADMIN' || 'ADM' || 'ADMINISTRADOR' => 'Administrador',
       'MEDICO' => 'Médico(a)',
       'ENFERMEIRO' => 'Enfermeiro(a)',
       'RECEPCAO' => 'Recepção / Triagem',

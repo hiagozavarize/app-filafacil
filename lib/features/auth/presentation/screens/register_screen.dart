@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/input_formatters.dart';
 import '../../../../core/widgets/filafacil_button.dart';
 import '../../../../core/widgets/filafacil_logo.dart';
 import '../../../../core/widgets/filafacil_text_field.dart';
@@ -140,6 +141,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 hintText: '000.000.000-00',
                 controller: _cpfController,
                 keyboardType: TextInputType.number,
+                inputFormatters: const [CpfInputFormatter()],
               ),
               const SizedBox(height: 12),
               AuthPlaceholderField(
@@ -154,6 +156,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 hintText: '(98) 98877-6655',
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
+                inputFormatters: const [PhoneBrInputFormatter()],
               ),
               const SizedBox(height: 12),
               AuthPlaceholderField(

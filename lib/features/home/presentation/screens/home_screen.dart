@@ -220,27 +220,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  'Próximo da Fila (${nextTicket.positionBadge})',
-                                  style: AppTextStyles.bodyMedium.copyWith(
-                                    color: AppColors.azulUbs,
-                                    fontWeight: FontWeight.w700,
+                                Expanded(
+                                  child: Text(
+                                    'Próximo da Fila (${nextTicket.positionBadge})',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyles.bodyMedium.copyWith(
+                                      color: AppColors.azulUbs,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.verdeClaro,
-                                    borderRadius: BorderRadius.circular(99),
-                                  ),
-                                  child: Text(
-                                    nextTicket.room,
-                                    style: AppTextStyles.caption.copyWith(
-                                      color: AppColors.verdeSaude,
-                                      fontWeight: FontWeight.w600,
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  flex: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.verdeClaro,
+                                      borderRadius: BorderRadius.circular(99),
+                                    ),
+                                    child: Text(
+                                      nextTicket.room,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTextStyles.caption.copyWith(
+                                        color: AppColors.verdeSaude,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
                                 ),

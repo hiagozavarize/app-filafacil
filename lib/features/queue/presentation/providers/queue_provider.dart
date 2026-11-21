@@ -244,6 +244,8 @@ class QueueNotifier extends Notifier<QueueState> {
     required String ubsName,
     required String scheduledDate,
     required String scheduledTime,
+    String? patientId,
+    String? scheduledDateIso,
     String susCard = '',
     TicketPriority priority = TicketPriority.normal,
     String notes = '',
@@ -258,6 +260,7 @@ class QueueNotifier extends Notifier<QueueState> {
 
       final draftTicket = QueueTicket(
         id: 'local-${DateTime.now().millisecondsSinceEpoch}',
+        patientId: patientId,
         positionNumber: nextPos,
         ticketCode: '',
         protocol: '',
@@ -270,6 +273,7 @@ class QueueNotifier extends Notifier<QueueState> {
         room: room,
         ubsName: ubsName,
         scheduledDate: scheduledDate,
+        scheduledDateIso: scheduledDateIso,
         scheduledTime: scheduledTime,
         priorityLabel: priority.displayLabel,
         priority: priority,

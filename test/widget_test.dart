@@ -1,7 +1,10 @@
+import 'package:filafacil_ubs/core/utils/input_formatters.dart';
 import 'package:filafacil_ubs/features/auth/data/repositories/auth_repository.dart';
 import 'package:filafacil_ubs/features/auth/domain/entities/health_agent.dart';
+import 'package:filafacil_ubs/features/auth/presentation/providers/auth_provider.dart';
 import 'package:filafacil_ubs/features/history/data/repositories/history_repository.dart';
 import 'package:filafacil_ubs/features/history/presentation/providers/history_provider.dart';
+import 'package:filafacil_ubs/features/home/presentation/screens/home_screen.dart';
 import 'package:filafacil_ubs/features/queue/data/repositories/queue_repository.dart';
 import 'package:filafacil_ubs/features/queue/domain/entities/queue_ticket.dart';
 import 'package:filafacil_ubs/features/queue/presentation/providers/queue_provider.dart';
@@ -140,8 +143,25 @@ void main() {
       expect(ticket.priority, TicketPriority.preferencial80);
       expect(ticket.status, QueueStatus.inAttendance);
       expect(ticket.room, 'Consultorio 01');
-      expect(ticket.toCreateTicketPayload()['priority'], 'PREFERENCIAL_80');
-      expect(ticket.toCreateTicketPayload()['cartaoSus'], '892441029810001');
+
+      final ticketWithBirth = ticket.copyWith(
+        birthDate: '12/03/1940',
+        scheduledDateIso: '2026-11-20',
+      );
+      final payload = ticketWithBirth.toCreateTicketPayload();
+      expect(payload['priority'], 'PREFERENCIAL_80');
+      expect(payload['specialCondition'], 'Idoso 80+');
+      expect(payload['cartaoSus'], '892441029810001');
+      expect(payload['birthDate'], '1940-03-12');
+      expect(payload['service'], 'Clinica Geral');
+      expect(payload['scheduledDate'], '2026-11-20');
+
+      // Verifica parse de status reais em português do backend Prisma
+      expect(QueueStatus.fromApi('EM_ATENDIMENTO'), QueueStatus.inAttendance);
+      expect(QueueStatus.fromApi('CHAMADO'), QueueStatus.called);
+      expect(QueueStatus.fromApi('AGUARDANDO'), QueueStatus.waiting);
+      expect(QueueStatus.fromApi('FINALIZADO'), QueueStatus.completed);
+      expect(QueueStatus.fromApi('AUSENTE'), QueueStatus.absent);
 
       final stats = DashboardStats.fromApi(
         dashboardJson: const <String, dynamic>{
@@ -231,4 +251,59 @@ void main() {
       expect(find.text('Home'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'HomeScreen renderiza conta ADM com nome longo em tela estreita sem overflow',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final container = ProviderContainer(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(MockAuthRepository()),
+          queueRepositoryProvider.overrideWithValue(MockQueueRepository()),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.runAsync(() async {
+        await container
+            .read(authProvider.notifier)
+            .updateProfile(
+              const HealthAgent(
+                id: 'adm-01',
+                name: 'Administrador Geral do Sistema UBS',
+                cpf: '000.000.000-00',
+                email: 'admin@ubs.saude.gov.br',
+                phone: '(98) 99999-0000',
+                cns: '700000000000001',
+                role: 'ADMIN',
+                assignedUbs: 'UBS Centro Integrado de Saúde',
+              ),
+            );
+      });
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: HomeScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Administrador'), findsOneWidget);
+    },
+  );
+
+  test('Formatadores de CPF, Data de Nascimento e Cartão SUS funcionam corretamente', () {
+    expect(formatCpf('38922019810'), '389.220.198-10');
+    expect(formatDateBrDigits('12031940'), '12/03/1940');
+    expect(formatBirthDateToBr('1940-03-12T00:00:00.000Z'), '12/03/1940');
+    expect(formatBirthDateToIso('12/03/1940'), '1940-03-12');
+    expect(formatBirthDateToIso('31/02/1990'), isNull);
+    expect(formatSusCard('892441029810001'), '892 4410 2981 0001');
+  });
 }

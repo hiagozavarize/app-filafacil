@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
@@ -12,6 +13,7 @@ class AuthPlaceholderField extends StatelessWidget {
     required this.controller,
     this.obscureText = false,
     this.keyboardType,
+    this.inputFormatters,
   });
 
   final String label;
@@ -19,6 +21,7 @@ class AuthPlaceholderField extends StatelessWidget {
   final TextEditingController controller;
   final bool obscureText;
   final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +41,7 @@ class AuthPlaceholderField extends StatelessWidget {
               controller: controller,
               obscureText: obscureText,
               keyboardType: keyboardType,
+              inputFormatters: inputFormatters,
               style: AppTextStyles.bodyRegular,
               decoration: InputDecoration(
                 hintText: hintText,
@@ -68,6 +72,7 @@ class FormQuestionField extends StatelessWidget {
     required this.controller,
     this.keyboardType,
     this.readOnly = false,
+    this.inputFormatters,
   });
 
   final String label;
@@ -75,6 +80,7 @@ class FormQuestionField extends StatelessWidget {
   final TextEditingController controller;
   final TextInputType? keyboardType;
   final bool readOnly;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -96,6 +102,7 @@ class FormQuestionField extends StatelessWidget {
             controller: controller,
             keyboardType: keyboardType,
             readOnly: readOnly,
+            inputFormatters: inputFormatters,
             style: AppTextStyles.bodyMedium,
             decoration: InputDecoration(
               hintText: hintText,
@@ -115,4 +122,3 @@ class FormQuestionField extends StatelessWidget {
     );
   }
 }
-

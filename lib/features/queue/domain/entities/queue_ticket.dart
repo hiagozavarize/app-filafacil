@@ -1,42 +1,73 @@
 import 'package:equatable/equatable.dart';
 
-/// Prioridade legal do SUS mapeada diretamente para o enum `priority` da API `/api/tickets`.
+import '../../../../core/utils/input_formatters.dart';
+
+/// Prioridade legal do SUS mapeada para o backend (`priority` + `specialCondition`).
 enum TicketPriority {
-  normal('NORMAL', 'Normal', 'Atendimento Regular'),
-  preferencial60('PREFERENCIAL_60', 'Idoso 60+', 'Prioridade: Idoso 60+'),
-  preferencial80('PREFERENCIAL_80', 'Idoso 80+', 'Prioridade: Idoso 80+'),
-  gestante('GESTANTE', 'Gestante', 'Prioridade: Gestante'),
-  pcd('PCD', 'PCD', 'Prioridade: Pessoa com Deficiência'),
+  normal('NORMAL', 'Normal', 'Atendimento Regular', null),
+  preferencial60(
+    'PREFERENCIAL_60',
+    'Idoso 60+',
+    'Prioridade: Idoso 60+',
+    'Idoso 60+',
+  ),
+  preferencial80(
+    'PREFERENCIAL_80',
+    'Idoso 80+',
+    'Prioridade: Idoso 80+',
+    'Idoso 80+',
+  ),
+  gestante('PREFERENCIAL', 'Gestante', 'Prioridade: Gestante', 'Gestante'),
+  pcd('PREFERENCIAL', 'PCD', 'Prioridade: Pessoa com Deficiência', 'PCD'),
   urgenciaManchester(
     'URGENCIA_MANCHESTER',
     'Urgência',
     'Urgência (Protocolo Manchester)',
+    'Urgência Manchester',
   );
 
-  const TicketPriority(this.apiValue, this.shortLabel, this.displayLabel);
+  const TicketPriority(
+    this.apiValue,
+    this.shortLabel,
+    this.displayLabel,
+    this.specialConditionValue,
+  );
 
   final String apiValue;
   final String shortLabel;
   final String displayLabel;
+  final String? specialConditionValue;
 
-  static TicketPriority fromApi(String? value) {
-    final normalized = (value ?? '').trim().toUpperCase();
-    return TicketPriority.values.firstWhere(
-      (p) => p.apiValue == normalized || p.name.toUpperCase() == normalized,
-      orElse: () => TicketPriority.normal,
-    );
+  static TicketPriority fromApi(String? value, {String? label}) {
+    final combined = '${value ?? ''} ${label ?? ''}'.trim().toUpperCase();
+    if (combined.contains('URG') || combined.contains('MANCHESTER')) {
+      return TicketPriority.urgenciaManchester;
+    }
+    if (combined.contains('80')) {
+      return TicketPriority.preferencial80;
+    }
+    if (combined.contains('GESTANTE')) {
+      return TicketPriority.gestante;
+    }
+    if (combined.contains('PCD') || combined.contains('DEFICIENTE')) {
+      return TicketPriority.pcd;
+    }
+    if (combined.contains('60') || combined.contains('PREF')) {
+      return TicketPriority.preferencial60;
+    }
+    return TicketPriority.normal;
   }
 }
 
-/// Status do ciclo de atendimento mapeado 1:1 para o enum `status` da API `/api/tickets`.
+/// Status do ciclo de atendimento mapeado para os enums da API (PT-BR e EN).
 enum QueueStatus {
-  inAttendance('Atendendo', 'IN_PROGRESS'),
-  called('Chamado', 'CALLED'),
-  next('Próximo', 'WAITING'),
-  waiting('Aguardando', 'WAITING'),
-  completed('Concluído', 'FINISHED'),
-  absent('Ausente', 'ABSENT'),
-  cancelled('Cancelado', 'CANCELLED');
+  inAttendance('Atendendo', 'EM_ATENDIMENTO'),
+  called('Chamado', 'CHAMADO'),
+  next('Próximo', 'AGUARDANDO'),
+  waiting('Aguardando', 'AGUARDANDO'),
+  completed('Concluído', 'FINALIZADO'),
+  absent('Ausente', 'AUSENTE'),
+  cancelled('Cancelado', 'CANCELADO');
 
   const QueueStatus(this.label, this.apiValue);
 
@@ -52,20 +83,26 @@ enum QueueStatus {
   static QueueStatus fromApi(String? raw) {
     final value = (raw ?? '').trim().toUpperCase();
     return switch (value) {
-      'IN_PROGRESS' || 'INATTENDANCE' || 'ATENDENDO' => QueueStatus.inAttendance,
-      'CALLED' || 'CHAMADO' => QueueStatus.called,
+      'EM_ATENDIMENTO' ||
+      'IN_PROGRESS' ||
+      'INATTENDANCE' ||
+      'ATENDENDO' => QueueStatus.inAttendance,
+      'CHAMANDO' || 'CHAMADO' || 'CALLED' => QueueStatus.called,
       'NEXT' || 'PRÓXIMO' || 'PROXIMO' => QueueStatus.next,
-      'WAITING' || 'AGUARDANDO' => QueueStatus.waiting,
-      'FINISHED' || 'COMPLETED' || 'CONCLUÍDO' || 'CONCLUIDO' =>
-        QueueStatus.completed,
-      'ABSENT' || 'AUSENTE' => QueueStatus.absent,
-      'CANCELLED' || 'CANCELED' || 'CANCELADO' => QueueStatus.cancelled,
+      'AGUARDANDO' || 'TRIAGEM' || 'WAITING' => QueueStatus.waiting,
+      'FINALIZADO' ||
+      'FINISHED' ||
+      'COMPLETED' ||
+      'CONCLUÍDO' ||
+      'CONCLUIDO' => QueueStatus.completed,
+      'AUSENTE' || 'ABSENT' => QueueStatus.absent,
+      'CANCELADO' || 'CANCELLED' || 'CANCELED' => QueueStatus.cancelled,
       _ => QueueStatus.waiting,
     };
   }
 }
 
-/// Entidade que representa uma senha/ticket na fila da UBS (`Ticket` no Swagger).
+/// Entidade que representa uma senha/ticket na fila da UBS (`Ticket` no backend Prisma).
 class QueueTicket extends Equatable {
   const QueueTicket({
     required this.id,
@@ -85,6 +122,8 @@ class QueueTicket extends Equatable {
     required this.priorityLabel,
     required this.triageNotes,
     required this.status,
+    this.patientId,
+    this.scheduledDateIso,
     this.priority = TicketPriority.normal,
     this.doctorName = 'Equipe UBS',
     this.calledAt,
@@ -97,6 +136,7 @@ class QueueTicket extends Equatable {
   });
 
   final String id;
+  final String? patientId;
   final int positionNumber;
   final String ticketCode;
   final String protocol;
@@ -109,6 +149,7 @@ class QueueTicket extends Equatable {
   final String room;
   final String ubsName;
   final String scheduledDate;
+  final String? scheduledDateIso;
   final String scheduledTime;
   final String priorityLabel;
   final String triageNotes;
@@ -123,11 +164,13 @@ class QueueTicket extends Equatable {
   final String? cid10;
   final DateTime? createdAt;
 
-  String get positionBadge =>
-      ticketCode.isNotEmpty ? ticketCode : '#${positionNumber.toString().padLeft(2, '0')}';
+  String get positionBadge => ticketCode.isNotEmpty
+      ? ticketCode
+      : '#${positionNumber.toString().padLeft(2, '0')}';
 
   QueueTicket copyWith({
     String? id,
+    String? patientId,
     int? positionNumber,
     String? ticketCode,
     String? protocol,
@@ -140,6 +183,7 @@ class QueueTicket extends Equatable {
     String? room,
     String? ubsName,
     String? scheduledDate,
+    String? scheduledDateIso,
     String? scheduledTime,
     String? priorityLabel,
     String? triageNotes,
@@ -156,6 +200,7 @@ class QueueTicket extends Equatable {
   }) {
     return QueueTicket(
       id: id ?? this.id,
+      patientId: patientId ?? this.patientId,
       positionNumber: positionNumber ?? this.positionNumber,
       ticketCode: ticketCode ?? this.ticketCode,
       protocol: protocol ?? this.protocol,
@@ -168,6 +213,7 @@ class QueueTicket extends Equatable {
       room: room ?? this.room,
       ubsName: ubsName ?? this.ubsName,
       scheduledDate: scheduledDate ?? this.scheduledDate,
+      scheduledDateIso: scheduledDateIso ?? this.scheduledDateIso,
       scheduledTime: scheduledTime ?? this.scheduledTime,
       priorityLabel: priorityLabel ?? this.priorityLabel,
       triageNotes: triageNotes ?? this.triageNotes,
@@ -190,6 +236,20 @@ class QueueTicket extends Equatable {
       return DateTime.tryParse(raw)?.toLocal();
     }
     return null;
+  }
+
+  static int _computeAgeFromBirthDate(String rawBirthDate) {
+    final iso = formatBirthDateToIso(rawBirthDate);
+    if (iso == null) return 0;
+    final dob = DateTime.tryParse(iso);
+    if (dob == null) return 0;
+    final now = DateTime.now();
+    var years = now.year - dob.year;
+    if (now.month < dob.month ||
+        (now.month == dob.month && now.day < dob.day)) {
+      years--;
+    }
+    return years < 0 ? 0 : years;
   }
 
   static String _formatShortDate(DateTime dt) {
@@ -224,28 +284,39 @@ class QueueTicket extends Equatable {
         (json['code'] as String?) ??
         (json['ticket_code'] as String?) ??
         'SEN-001';
+    final rawPriorityLabel =
+        (json['priorityLabel'] as String?) ??
+        (json['priority_label'] as String?);
     final priority = TicketPriority.fromApi(
       json['priority'] as String? ?? json['priorityGroup'] as String?,
+      label: rawPriorityLabel,
     );
     final status = QueueStatus.fromApi(json['status'] as String?);
     final createdAt = _parseDate(json['createdAt'] ?? json['created_at']);
+    final scheduledAt = _parseDate(json['scheduledAt']);
     final calledAt = _parseDate(json['calledAt'] ?? json['called_at']);
-    final startedAt = _parseDate(json['startedAt'] ?? json['started_at']);
+    final startedAt = _parseDate(
+      json['attendedAt'] ?? json['startedAt'] ?? json['started_at'],
+    );
     final finishedAt = _parseDate(json['finishedAt'] ?? json['finished_at']);
 
-    final rawSpecialty = (json['specialty'] as String?)?.trim();
+    final rawSpecialty =
+        (json['serviceLabel'] as String?)?.trim() ??
+        (json['specialty'] as String?)?.trim() ??
+        (json['service'] as String?)?.trim();
     final specialty = (rawSpecialty != null && rawSpecialty.isNotEmpty)
         ? rawSpecialty
         : 'Clínica Geral';
 
     final rawRoom =
-        (json['roomName'] as String?)?.trim() ??
-        (json['room'] as String?)?.trim();
+        (json['room'] as String?)?.trim() ??
+        (json['roomName'] as String?)?.trim();
     final room = (rawRoom != null && rawRoom.isNotEmpty)
         ? rawRoom
         : _defaultRoomForSpecialty(specialty);
 
     final rawDoctor =
+        (json['professional'] as String?)?.trim() ??
         (json['doctorName'] as String?)?.trim() ??
         (json['doctor_name'] as String?)?.trim();
     final doctorName = (rawDoctor != null && rawDoctor.isNotEmpty)
@@ -258,15 +329,25 @@ class QueueTicket extends Equatable {
         ? rawProtocol
         : (code.isNotEmpty ? '#$code' : '#$shortId');
 
+    final displayDate = scheduledAt ?? createdAt ?? DateTime.now();
     final scheduledDate =
-        (json['scheduled_date'] as String?) ??
-        (createdAt != null ? _formatShortDate(createdAt) : _formatShortDate(DateTime.now()));
+        (json['scheduled_date'] as String?) ?? _formatShortDate(displayDate);
     final scheduledTime =
-        (json['scheduled_time'] as String?) ??
-        (createdAt != null ? _formatTime(createdAt) : _formatTime(DateTime.now()));
+        (json['scheduled_time'] as String?) ?? _formatTime(displayDate);
+
+    final patientMap = json['patient'] as Map<String, dynamic>?;
+    final rawBirthDate =
+        (json['birthDate'] as String?) ??
+        (json['birth_date'] as String?) ??
+        (patientMap?['birthDate'] as String?) ??
+        '';
+    final formattedBirth = formatBirthDateToBr(rawBirthDate);
+    final parsedAge =
+        (json['age'] as num?)?.toInt() ?? _computeAgeFromBirthDate(rawBirthDate);
 
     return QueueTicket(
       id: id,
+      patientId: json['patientId'] as String? ?? patientMap?['id'] as String?,
       positionNumber:
           (json['position_number'] as num?)?.toInt() ??
           (json['position'] as num?)?.toInt() ??
@@ -279,12 +360,11 @@ class QueueTicket extends Equatable {
           (json['patient_name'] as String?) ??
           'Paciente',
       cpf: (json['cpf'] as String?) ?? '',
-      birthDate: (json['birthDate'] as String?) ??
-          (json['birth_date'] as String?) ??
-          '',
-      age: (json['age'] as num?)?.toInt() ?? 0,
+      birthDate: formattedBirth,
+      age: parsedAge,
       susCard:
           (json['cartaoSus'] as String?) ??
+          (json['susCard'] as String?) ??
           (json['sus_card'] as String?) ??
           '',
       specialty: specialty,
@@ -295,8 +375,9 @@ class QueueTicket extends Equatable {
           fallbackUbs,
       scheduledDate: scheduledDate,
       scheduledTime: scheduledTime,
-      priorityLabel:
-          (json['priority_label'] as String?) ?? priority.displayLabel,
+      priorityLabel: (rawPriorityLabel != null && rawPriorityLabel.isNotEmpty)
+          ? rawPriorityLabel
+          : priority.displayLabel,
       triageNotes:
           (json['notes'] as String?) ??
           (json['triage_notes'] as String?) ??
@@ -308,20 +389,40 @@ class QueueTicket extends Equatable {
       startedAt: startedAt,
       finishedAt: finishedAt,
       waitTimeMinutes: json['waitTimeMinutes'] as num?,
-      serviceDurationMinutes: json['serviceDurationMinutes'] as num?,
-      cid10: json['cid10'] as String?,
+      serviceDurationMinutes:
+          (json['consultationTimeMinutes'] as num?) ??
+          (json['serviceDurationMinutes'] as num?),
+      cid10: (json['cid'] as String?) ?? (json['cid10'] as String?),
       createdAt: createdAt,
     );
   }
 
-  /// Payload exato aceito por `POST /api/tickets`.
+  /// Payload completo aceito por `POST /api/tickets` no backend (`TicketController.createTicket`).
+  /// Envia `birthDate` em formato ISO (`YYYY-MM-DD`) para que o backend calcule e salve `age`
+  /// e exiba corretamente a idade do paciente no dashboard web.
   Map<String, dynamic> toCreateTicketPayload() {
+    final isoBirthDate = formatBirthDateToIso(birthDate);
+    final cleanSus = digitsOnly(susCard);
     return <String, dynamic>{
+      if (patientId != null && patientId!.trim().isNotEmpty)
+        'patientId': patientId!.trim(),
       'patientName': patientName.trim(),
-      if (cpf.trim().isNotEmpty) 'cpf': cpf.trim(),
-      if (susCard.trim().isNotEmpty) 'cartaoSus': susCard.trim(),
+      if (cpf.trim().isNotEmpty) 'cpf': formatCpf(cpf),
+      if (cleanSus.isNotEmpty) 'cartaoSus': cleanSus,
+      if (isoBirthDate != null)
+        'birthDate': isoBirthDate
+      else if (birthDate.trim().isNotEmpty)
+        'birthDate': birthDate.trim(),
       'priority': priority.apiValue,
+      if (priority.specialConditionValue != null)
+        'specialCondition': priority.specialConditionValue,
+      if (specialty.trim().isNotEmpty) 'service': specialty.trim(),
       if (specialty.trim().isNotEmpty) 'specialty': specialty.trim(),
+      if (room.trim().isNotEmpty) 'room': room.trim(),
+      if (scheduledDateIso != null && scheduledDateIso!.isNotEmpty)
+        'scheduledDate': scheduledDateIso,
+      if (scheduledTime.trim().isNotEmpty)
+        'scheduledTime': scheduledTime.trim(),
       if (triageNotes.trim().isNotEmpty) 'notes': triageNotes.trim(),
     };
   }
@@ -339,6 +440,7 @@ class QueueTicket extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    patientId,
     positionNumber,
     ticketCode,
     protocol,
@@ -351,6 +453,7 @@ class QueueTicket extends Equatable {
     room,
     ubsName,
     scheduledDate,
+    scheduledDateIso,
     scheduledTime,
     priorityLabel,
     triageNotes,
