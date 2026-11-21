@@ -66,63 +66,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _showForgotPasswordDialog() async {
-    final recoveryController = TextEditingController(
-      text: _loginController.text.trim(),
-    );
-    final submitted = await showDialog<bool>(
+    final emailOrCpf = await showDialog<String>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          title: const Text(
-            'Recuperar Senha',
-            style: AppTextStyles.sectionTitle,
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Informe seu CPF ou e-mail institucional cadastrado na UBS:',
-                style: AppTextStyles.bodyRegular,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: recoveryController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  hintText: 'CPF ou e-mail',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.azulUbs,
-                foregroundColor: AppColors.branco,
-              ),
-              child: const Text('Enviar'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => _ForgotPasswordDialog(
+        initialValue: _loginController.text.trim(),
+      ),
     );
 
-    final emailOrCpf = recoveryController.text.trim();
-    recoveryController.dispose();
-
-    if (submitted != true || emailOrCpf.isEmpty || !mounted) return;
+    if (emailOrCpf == null || emailOrCpf.isEmpty || !mounted) return;
 
     final ok = await ref
         .read(authProvider.notifier)
@@ -231,6 +182,75 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ForgotPasswordDialog extends StatefulWidget {
+  const _ForgotPasswordDialog({required this.initialValue});
+
+  final String initialValue;
+
+  @override
+  State<_ForgotPasswordDialog> createState() => _ForgotPasswordDialogState();
+}
+
+class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
+  late final TextEditingController _recoveryController;
+
+  @override
+  void initState() {
+    super.initState();
+    _recoveryController = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _recoveryController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: const Text('Recuperar Senha', style: AppTextStyles.sectionTitle),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Informe seu CPF ou e-mail institucional cadastrado na UBS:',
+            style: AppTextStyles.bodyRegular,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _recoveryController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: InputDecoration(
+              hintText: 'CPF ou e-mail',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: () =>
+              Navigator.of(context).pop(_recoveryController.text.trim()),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.azulUbs,
+            foregroundColor: AppColors.branco,
+          ),
+          child: const Text('Enviar'),
+        ),
+      ],
     );
   }
 }

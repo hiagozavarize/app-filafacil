@@ -5,6 +5,7 @@ import 'package:filafacil_ubs/features/history/presentation/providers/history_pr
 import 'package:filafacil_ubs/features/queue/data/repositories/queue_repository.dart';
 import 'package:filafacil_ubs/features/queue/domain/entities/queue_ticket.dart';
 import 'package:filafacil_ubs/features/queue/presentation/providers/queue_provider.dart';
+import 'package:filafacil_ubs/features/queue/presentation/screens/patient_call_screen.dart';
 import 'package:filafacil_ubs/features/stats/data/repositories/stats_repository.dart';
 import 'package:filafacil_ubs/features/stats/domain/entities/dashboard_stats.dart';
 import 'package:filafacil_ubs/features/stats/presentation/providers/stats_provider.dart';
@@ -12,6 +13,7 @@ import 'package:filafacil_ubs/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 void main() {
   testWidgets(
@@ -178,4 +180,55 @@ void main() {
     await container.read(historyProvider.notifier).loadHistory();
     expect(container.read(historyProvider).filteredRecords.length, 3);
   });
+
+  testWidgets(
+    'PatientCallScreen conclui atendimento no diálogo sem erro de controller descartado',
+    (WidgetTester tester) async {
+      final mockRepo = MockQueueRepository();
+      final container = ProviderContainer(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(MockAuthRepository()),
+          queueRepositoryProvider.overrideWithValue(mockRepo),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(queueProvider.notifier).loadQueue();
+
+      final router = GoRouter(
+        initialLocation: '/home',
+        routes: [
+          GoRoute(
+            path: '/home',
+            builder: (_, _) => const Scaffold(body: Text('Home')),
+          ),
+          GoRoute(
+            path: '/patient-call',
+            builder: (_, _) => const PatientCallScreen(),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      router.push('/patient-call');
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Concluir Atendimento'));
+      await tester.tap(find.text('Concluir Atendimento'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Finalizar Atendimento'), findsOneWidget);
+      await tester.tap(find.text('Concluir'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Home'), findsOneWidget);
+    },
+  );
 }

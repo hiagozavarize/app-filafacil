@@ -32,79 +32,22 @@ class _PatientCallScreenState extends ConsumerState<PatientCallScreen> {
   }
 
   Future<void> _handleFinishDialog(QueueTicket ticket) async {
-    final cidController = TextEditingController(text: ticket.cid10 ?? '');
-    final notesController = TextEditingController(text: ticket.triageNotes);
-
-    final confirmed = await showDialog<bool>(
+    final result = await showDialog<({String cid10, String notes})>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          title: const Text(
-            'Finalizar Atendimento',
-            style: AppTextStyles.sectionTitle,
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: cidController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(
-                  labelText: 'CID-10 (opcional)',
-                  hintText: 'Ex: I10',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: notesController,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: 'Anotações do atendimento',
-                  hintText: 'Paciente medicado e orientado...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.verdeSaude,
-                foregroundColor: AppColors.branco,
-              ),
-              child: const Text('Concluir'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => _FinishAttendanceDialog(
+        initialCid10: ticket.cid10 ?? '',
+        initialNotes: ticket.triageNotes,
+      ),
     );
 
-    final cid10 = cidController.text.trim();
-    final notes = notesController.text.trim();
-    cidController.dispose();
-    notesController.dispose();
-
-    if (confirmed != true || !mounted) return;
+    if (result == null || !mounted) return;
 
     final ok = await ref
         .read(queueProvider.notifier)
         .finishAttendance(
           ticketId: ticket.id,
-          cid10: cid10.isEmpty ? null : cid10,
-          notes: notes.isEmpty ? null : notes,
+          cid10: result.cid10.isEmpty ? null : result.cid10,
+          notes: result.notes.isEmpty ? null : result.notes,
         );
 
     if (!mounted) return;
@@ -347,6 +290,95 @@ class _PatientCallScreenState extends ConsumerState<PatientCallScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _FinishAttendanceDialog extends StatefulWidget {
+  const _FinishAttendanceDialog({
+    required this.initialCid10,
+    required this.initialNotes,
+  });
+
+  final String initialCid10;
+  final String initialNotes;
+
+  @override
+  State<_FinishAttendanceDialog> createState() =>
+      _FinishAttendanceDialogState();
+}
+
+class _FinishAttendanceDialogState extends State<_FinishAttendanceDialog> {
+  late final TextEditingController _cidController;
+  late final TextEditingController _notesController;
+
+  @override
+  void initState() {
+    super.initState();
+    _cidController = TextEditingController(text: widget.initialCid10);
+    _notesController = TextEditingController(text: widget.initialNotes);
+  }
+
+  @override
+  void dispose() {
+    _cidController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: const Text(
+        'Finalizar Atendimento',
+        style: AppTextStyles.sectionTitle,
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _cidController,
+            textCapitalization: TextCapitalization.characters,
+            decoration: InputDecoration(
+              labelText: 'CID-10 (opcional)',
+              hintText: 'Ex: I10',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _notesController,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Anotações do atendimento',
+              hintText: 'Paciente medicado e orientado...',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop((
+            cid10: _cidController.text.trim(),
+            notes: _notesController.text.trim(),
+          )),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.verdeSaude,
+            foregroundColor: AppColors.branco,
+          ),
+          child: const Text('Concluir'),
+        ),
+      ],
     );
   }
 }
